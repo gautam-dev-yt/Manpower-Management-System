@@ -1,0 +1,120 @@
+# Manpower Management System - Backend Makefile
+
+.PHONY: help run build test lint format migrate-up migrate-down migrate-create docker-up docker-down clean
+
+# Variables
+APP_NAME=manpower-api
+BUILD_DIR=bin
+MIGRATIONS_DIR=migrations
+DB_URL=postgres://postgres:postgres@localhost:5432/manpower_dev?sslmode=disable
+
+## help: Display this help message
+help:
+	@echo "Available commands:"
+	@sed -n 's/^##//p' $(MAKEFILE_LIST) | column -t -s ':' | sed -e 's/^/ /'
+
+## run: Run the application in development mode
+run:
+	@echo "Starting application..."
+	go run cmd/api/main.go
+
+## build: Build the application binary
+build:
+	@echo "Building application..."
+	mkdir -p $(BUILD_DIR)
+	go build -o $(BUILD_DIR)/$(APP_NAME) cmd/api/main.go
+	@echo "Built: $(BUILD_DIR)/$(APP_NAME)"
+
+## test: Run all tests
+test:
+	@echo "Running tests..."
+	go test ./... -v
+
+## test-cover: Run tests with coverage
+test-cover:
+	@echo "Running tests with coverage..."
+	go test ./... -coverprofile=coverage.out
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
+
+## lint: Run linter
+lint:
+	@echo "Running linter..."
+	golangci-lint run
+
+## format: Format code
+format:
+	@echo "Formatting code..."
+	go fmt ./...
+	goimports -w .
+
+## tidy: Tidy dependencies
+tidy:
+	@echo "Tidying dependencies..."
+	go mod tidy
+
+## migrate-up: Run database migrations up
+migrate-up:
+	@echo "Running migrations up..."
+	migrate -path $(MIGRATIONS_DIR) -database "$(DB_URL)" up
+
+## migrate-down: Run database migrations down
+migrate-down:
+	@echo "Running migrations down..."
+	migrate -path $(MIGRATIONS_DIR) -database "$(DB_URL)" down
+
+## migrate-create: Create a new migration (usage: make migrate-create name=create_users)
+migrate-create:
+	@if [ -z "$(name)" ]; then \
+		echo "Error: migration name required. Usage: make migrate-create name=your_migration_name"; \
+		exit 1; \
+	fi
+	@echo "Creating migration: $(name)"
+	migrate create -ext sql -dir $(MIGRATIONS_DIR) -seq $(name)
+
+## sqlc-generate: Generate sqlc code
+sqlc-generate:
+	@echo "Generating sqlc code..."
+	sqlc generate
+
+## docker-up: Start Docker containers
+docker-up:
+	@echo "Starting Docker containers..."
+	docker-compose up -d
+
+## docker-down: Stop Docker containers
+docker-down:
+	@echo "Stopping Docker containers..."
+	docker-compose down
+
+## docker-logs: View Docker logs
+docker-logs:
+	docker-compose logs -f
+
+## seed: Seed database with sample data
+seed:
+	@echo "Seeding database..."
+	go run scripts/seed.go
+
+## clean: Clean build artifacts
+clean:
+	@echo "Cleaning..."
+	rm -rf $(BUILD_DIR)
+	rm -f coverage.out coverage.html
+
+## install-tools: Install development tools
+install-tools:
+	@echo "Installing development tools..."
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+	go install golang.org/x/tools/cmd/goimports@latest
+
+## setup: Initial project setup
+setup: install-tools
+	@echo "Setting up project..."
+	cp .env.example .env
+	@echo "Please edit .env file with your configuration"
+	@echo "Then run: make migrate-up"
+
+.DEFAULT_GOAL := help
