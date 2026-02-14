@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"manpower-backend/internal/ctxkeys"
 	"manpower-backend/internal/database"
 	"manpower-backend/internal/models"
 )
@@ -101,15 +102,25 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "created", "document", doc.ID, map[string]interface{}{
+		"type": doc.DocumentType, "employeeId": employeeID,
+	})
+
 	JSON(w, http.StatusCreated, map[string]interface{}{
 		"data":    doc,
 		"message": "Document created successfully",
 	})
 }
 
-// ListByEmployee handles GET /api/employees/{employeeId}/documents
+// ListByEmployee handles GET /api/employees/{id}/documents
 func (h *DocumentHandler) ListByEmployee(w http.ResponseWriter, r *http.Request) {
-	employeeID := chi.URLParam(r, "employeeId")
+	// Support both {id} (when nested under /employees/{id}) and {employeeId} (legacy)
+	employeeID := chi.URLParam(r, "id")
+	if employeeID == "" {
+		employeeID = chi.URLParam(r, "employeeId")
+	}
 	if employeeID == "" {
 		JSONError(w, http.StatusBadRequest, "Employee ID is required")
 		return
@@ -282,6 +293,12 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "updated", "document", doc.ID, map[string]interface{}{
+		"type": doc.DocumentType,
+	})
+
 	JSON(w, http.StatusOK, map[string]interface{}{
 		"data":    doc,
 		"message": "Document updated successfully",
@@ -351,6 +368,16 @@ func (h *DocumentHandler) TogglePrimary(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	action := "set_primary"
+	if currentlyPrimary {
+		action = "unset_primary"
+	}
+	logActivity(pool, userID, action, "document", id, map[string]interface{}{
+		"employeeId": employeeID,
+	})
+
 	JSON(w, http.StatusOK, map[string]string{
 		"message": "Primary document updated successfully",
 	})
@@ -381,7 +408,118 @@ func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "deleted", "document", id, nil)
+
 	JSON(w, http.StatusOK, map[string]string{
 		"message": "Document deleted successfully",
+	})
+}
+
+// ── Renew ──────────────────────────────────────────────────────
+
+// Renew handles POST /api/documents/{id}/renew
+// Creates a new document with the same type and employee, sets it as primary,
+// and archives the old one by unsetting its primary flag.
+// The request body should contain the new expiry date and optionally new file info.
+func (h *DocumentHandler) Renew(w http.ResponseWriter, r *http.Request) {
+	oldID := chi.URLParam(r, "id")
+	if oldID == "" {
+		JSONError(w, http.StatusBadRequest, "Document ID is required")
+		return
+	}
+
+	var req struct {
+		ExpiryDate string `json:"expiryDate"`
+		FileURL    string `json:"fileUrl,omitempty"`
+		FileName   string `json:"fileName,omitempty"`
+		FileSize   int64  `json:"fileSize,omitempty"`
+		FileType   string `json:"fileType,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+	if req.ExpiryDate == "" {
+		JSONError(w, http.StatusUnprocessableEntity, "New expiry date is required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	pool := h.db.GetPool()
+
+	// Fetch the old document to copy its type, employee, and file info
+	var employeeID, docType, fileURL, fileName, fileType string
+	var fileSize int64
+	err := pool.QueryRow(ctx, `
+		SELECT employee_id, document_type, file_url, file_name, file_size, file_type
+		FROM documents WHERE id = $1
+	`, oldID).Scan(&employeeID, &docType, &fileURL, &fileName, &fileSize, &fileType)
+	if err != nil {
+		JSONError(w, http.StatusNotFound, "Original document not found")
+		return
+	}
+
+	// Use new file info if provided, otherwise keep the old file
+	if req.FileURL != "" {
+		fileURL = req.FileURL
+	}
+	if req.FileName != "" {
+		fileName = req.FileName
+	}
+	if req.FileSize > 0 {
+		fileSize = req.FileSize
+	}
+	if req.FileType != "" {
+		fileType = req.FileType
+	}
+
+	// Transaction: unset old primary → insert new doc as primary
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		JSONError(w, http.StatusInternalServerError, "Failed to start transaction")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Unset old doc's primary flag
+	_, err = tx.Exec(ctx, `UPDATE documents SET is_primary = FALSE WHERE employee_id = $1 AND is_primary = TRUE`, employeeID)
+	if err != nil {
+		log.Printf("Error unsetting primary for employee %s: %v", employeeID, err)
+		JSONError(w, http.StatusInternalServerError, "Failed to archive old document")
+		return
+	}
+
+	// Insert renewed document as the new primary
+	var newDoc models.Document
+	row := tx.QueryRow(ctx, fmt.Sprintf(`
+		INSERT INTO documents (employee_id, document_type, expiry_date, is_primary, file_url, file_name, file_size, file_type)
+		VALUES ($1, $2, $3, TRUE, $4, $5, $6, $7)
+		RETURNING %s
+	`, docCols), employeeID, docType, req.ExpiryDate, fileURL, fileName, fileSize, fileType)
+
+	if err := scanDocument(row, &newDoc); err != nil {
+		log.Printf("Error inserting renewed document: %v", err)
+		JSONError(w, http.StatusInternalServerError, "Failed to create renewed document")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		JSONError(w, http.StatusInternalServerError, "Failed to commit renewal")
+		return
+	}
+
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "renewed", "document", newDoc.ID, map[string]interface{}{
+		"previousDocId": oldID, "type": docType, "newExpiry": req.ExpiryDate,
+	})
+
+	JSON(w, http.StatusCreated, map[string]interface{}{
+		"data":    newDoc,
+		"message": "Document renewed successfully",
 	})
 }

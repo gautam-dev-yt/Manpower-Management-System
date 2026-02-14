@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { SalaryRecordWithEmployee, SalarySummary, Company } from '@/types';
+
 import { Button } from '@/components/ui/button';
+import { useUser } from '@/hooks/use-user';
 import { DollarSign, Download, RefreshCw, CheckCircle, Clock, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const MONTHS = [
@@ -22,7 +24,9 @@ export default function SalaryPage() {
     const [companyFilter, setCompanyFilter] = useState('');
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
+
     const [generating, setGenerating] = useState(false);
+    const { isAdmin } = useUser();
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -129,10 +133,12 @@ export default function SalaryPage() {
                     <Button variant="outline" size="sm" onClick={handleExport}>
                         <Download className="h-4 w-4 mr-1" /> Export CSV
                     </Button>
-                    <Button onClick={handleGenerate} disabled={generating} size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700">
-                        <RefreshCw className={`h-4 w-4 mr-1 ${generating ? 'animate-spin' : ''}`} />
-                        Generate
-                    </Button>
+                    {isAdmin && (
+                        <Button onClick={handleGenerate} disabled={generating} size="sm" className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700">
+                            <RefreshCw className={`h-4 w-4 mr-1 ${generating ? 'animate-spin' : ''}`} />
+                            Generate
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -148,8 +154,8 @@ export default function SalaryPage() {
             {/* Summary Cards */}
             {summary && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <SummaryCard title="Total" value={`AED ${summary.totalAmount.toLocaleString()}`} sub={`${summary.totalCount} records`} color="blue" />
-                    <SummaryCard title="Paid" value={`AED ${summary.paidAmount.toLocaleString()}`} sub={`${summary.paidCount} employees`} color="emerald" />
+                    <SummaryCard title="Total" value={`${summary.currency} ${summary.totalAmount.toLocaleString()}`} sub={`${summary.totalCount} records`} color="blue" />
+                    <SummaryCard title="Paid" value={`${summary.currency} ${summary.paidAmount.toLocaleString()}`} sub={`${summary.paidCount} employees`} color="emerald" />
                     <SummaryCard title="Pending" value={`${summary.pendingCount}`} sub="awaiting payment" color="slate" />
                     <SummaryCard title="Partial" value={`${summary.partialCount}`} sub="incomplete" color="amber" />
                 </div>
@@ -169,7 +175,7 @@ export default function SalaryPage() {
                     <option value="">All Companies</option>
                     {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                {selected.size > 0 && (
+                {isAdmin && selected.size > 0 && (
                     <Button onClick={handleBulkPaid} size="sm" variant="outline" className="text-emerald-600 border-emerald-300 dark:border-emerald-700">
                         <CheckCircle className="h-4 w-4 mr-1" /> Mark {selected.size} as Paid
                     </Button>
@@ -193,40 +199,50 @@ export default function SalaryPage() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-border bg-muted/30">
-                                    <th className="px-4 py-3 text-left">
-                                        <input type="checkbox" checked={selected.size === records.length && records.length > 0}
-                                            onChange={toggleSelectAll} className="rounded border-border" />
-                                    </th>
+
+                                    {isAdmin && (
+                                        <th className="px-4 py-3 text-left">
+                                            <input type="checkbox" checked={selected.size === records.length && records.length > 0}
+                                                onChange={toggleSelectAll} className="rounded border-border" />
+                                        </th>
+                                    )}
                                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Employee</th>
                                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Company</th>
-                                    <th className="px-4 py-3 text-right font-medium text-muted-foreground">Amount (AED)</th>
+                                    <th className="px-4 py-3 text-right font-medium text-muted-foreground">Amount</th>
                                     <th className="px-4 py-3 text-center font-medium text-muted-foreground">Status</th>
                                     <th className="px-4 py-3 text-center font-medium text-muted-foreground">Paid Date</th>
-                                    <th className="px-4 py-3 text-center font-medium text-muted-foreground">Action</th>
+                                    {isAdmin && <th className="px-4 py-3 text-center font-medium text-muted-foreground">Action</th>}
                                 </tr>
                             </thead>
                             <tbody>
                                 {records.map(rec => (
                                     <tr key={rec.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                                        <td className="px-4 py-3">
-                                            <input type="checkbox" checked={selected.has(rec.id)}
-                                                onChange={() => toggleSelect(rec.id)} className="rounded border-border" />
-                                        </td>
+                                        {isAdmin && (
+                                            <td className="px-4 py-3">
+                                                <input type="checkbox" checked={selected.has(rec.id)}
+                                                    onChange={() => toggleSelect(rec.id)} className="rounded border-border" />
+                                            </td>
+                                        )}
                                         <td className="px-4 py-3 font-medium text-foreground">{rec.employeeName}</td>
                                         <td className="px-4 py-3 text-muted-foreground">{rec.companyName}</td>
-                                        <td className="px-4 py-3 text-right font-mono text-foreground">{rec.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td className="px-4 py-3 text-right font-mono text-foreground">
+                                            <span className="text-xs text-muted-foreground mr-1">{rec.currency}</span>
+                                            {rec.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </td>
                                         <td className="px-4 py-3 text-center">{statusBadge(rec.status)}</td>
                                         <td className="px-4 py-3 text-center text-muted-foreground text-xs">{rec.paidDate || '—'}</td>
-                                        <td className="px-4 py-3 text-center">
-                                            <Button variant="ghost" size="sm"
-                                                onClick={() => handleToggleStatus(rec.id, rec.status)}
-                                                className={rec.status === 'paid'
-                                                    ? 'text-amber-600 hover:text-amber-700'
-                                                    : 'text-emerald-600 hover:text-emerald-700'
-                                                }>
-                                                {rec.status === 'paid' ? 'Undo' : 'Mark Paid'}
-                                            </Button>
-                                        </td>
+                                        {isAdmin && (
+                                            <td className="px-4 py-3 text-center">
+                                                <Button variant="ghost" size="sm"
+                                                    onClick={() => handleToggleStatus(rec.id, rec.status)}
+                                                    className={rec.status === 'paid'
+                                                        ? 'text-amber-600 hover:text-amber-700'
+                                                        : 'text-emerald-600 hover:text-emerald-700'
+                                                    }>
+                                                    {rec.status === 'paid' ? 'Undo' : 'Mark Paid'}
+                                                </Button>
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>

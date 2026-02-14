@@ -19,6 +19,7 @@ type SalaryRecordWithEmployee struct {
 	SalaryRecord
 	EmployeeName string `json:"employeeName"`
 	CompanyName  string `json:"companyName"`
+	Currency     string `json:"currency"`
 }
 
 // SalarySummary provides aggregated salary data for a given month/year.
@@ -29,6 +30,7 @@ type SalarySummary struct {
 	PaidCount    int     `json:"paidCount"`
 	PartialCount int     `json:"partialCount"`
 	TotalCount   int     `json:"totalCount"`
+	Currency     string  `json:"currency"` // "AED", "USD", or "Mixed"
 }
 
 // GenerateSalaryRequest triggers salary record creation for a month.

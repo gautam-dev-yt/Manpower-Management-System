@@ -12,6 +12,7 @@ type DashboardMetrics struct {
 type Company struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
+	Currency  string `json:"currency"` // e.g. "AED", "USD"
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
@@ -20,6 +21,7 @@ type Company struct {
 type CompanySummary struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
+	Currency      string `json:"currency"`
 	EmployeeCount int    `json:"employeeCount"`
 }
 

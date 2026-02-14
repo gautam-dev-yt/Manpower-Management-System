@@ -219,6 +219,12 @@ export const api = {
             fetcher<{ message: string }>(`/api/documents/${id}/primary`, {
                 method: 'PATCH',
             }),
+
+        renew: (id: string, data: { expiryDate: string; fileUrl?: string; fileName?: string; fileSize?: number; fileType?: string }) =>
+            fetcher<{ data: Document; message: string }>(`/api/documents/${id}/renew`, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
     },
 
     // ── Salary ────────────────────────────────────────────────

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { api, type PaginatedResponse } from '@/lib/api';
 import type { EmployeeWithCompany, Company } from '@/types';
+import { useUser } from '@/hooks/use-user';
 
 const STATUS_COLORS: Record<string, string> = {
     valid: 'bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-400 border-green-200 dark:border-green-800',
@@ -46,6 +47,7 @@ export default function EmployeeListPage() {
     const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
     const [companies, setCompanies] = useState<Company[]>([]);
     const [loading, setLoading] = useState(true);
+    const { isAdmin } = useUser();
 
     // Filters — statusFilter is pre-filled from URL ?status=xxx (e.g. from dashboard cards)
     const [search, setSearch] = useState('');
@@ -104,12 +106,14 @@ export default function EmployeeListPage() {
                         {pagination.total} employee{pagination.total !== 1 ? 's' : ''} total
                     </p>
                 </div>
-                <Link href="/employees/new">
-                    <Button className="w-full sm:w-auto">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Employee
-                    </Button>
-                </Link>
+                {isAdmin && (
+                    <Link href="/employees/new">
+                        <Button className="w-full sm:w-auto">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Employee
+                        </Button>
+                    </Link>
+                )}
             </div>
 
             {/* Filters */}
@@ -210,10 +214,10 @@ export default function EmployeeListPage() {
                                             {/* Expiry countdown — derived from primary document */}
                                             {emp.expiryDaysLeft != null && (
                                                 <span className={`hidden sm:inline text-xs font-medium ${emp.expiryDaysLeft < 0
-                                                        ? 'text-red-600 dark:text-red-400'
-                                                        : emp.expiryDaysLeft <= 30
-                                                            ? 'text-amber-600 dark:text-amber-400'
-                                                            : 'text-emerald-600 dark:text-emerald-400'
+                                                    ? 'text-red-600 dark:text-red-400'
+                                                    : emp.expiryDaysLeft <= 30
+                                                        ? 'text-amber-600 dark:text-amber-400'
+                                                        : 'text-emerald-600 dark:text-emerald-400'
                                                     }`}>
                                                     {emp.expiryDaysLeft < 0
                                                         ? `${Math.abs(emp.expiryDaysLeft)}d ago`

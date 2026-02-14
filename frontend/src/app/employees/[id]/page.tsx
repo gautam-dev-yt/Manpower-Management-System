@@ -12,12 +12,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
     ArrowLeft, Pencil, Trash2, Phone, Building2, Calendar,
-    Briefcase, FileText, Plus, Loader2, AlertTriangle, XCircle, CheckCircle, Star,
+    Briefcase, FileText, Plus, Loader2, AlertTriangle, XCircle, CheckCircle, Star, RefreshCw,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { EmployeeWithCompany, Document as DocType } from '@/types';
 import { toast } from 'sonner';
 import { AddDocumentDialog, EditDocumentDialog } from '@/components/documents/add-document-dialog';
+import { RenewDocumentDialog } from '@/components/documents/renew-document-dialog';
+import { useUser } from '@/hooks/use-user';
 
 /** Calculate document expiry status and days remaining */
 function getDocStatus(expiryDate: string) {
@@ -41,8 +43,10 @@ export default function EmployeeDetailPage() {
     const [documents, setDocuments] = useState<DocType[]>([]);
     const [loading, setLoading] = useState(true);
     const [deleting, setDeleting] = useState(false);
+    const { isAdmin } = useUser();
     const [showAddDoc, setShowAddDoc] = useState(false);
     const [editingDoc, setEditingDoc] = useState<DocType | null>(null);
+    const [renewingDoc, setRenewingDoc] = useState<DocType | null>(null);
 
     const fetchEmployee = useCallback(async () => {
         try {
@@ -132,32 +136,34 @@ export default function EmployeeDetailPage() {
                                     </div>
                                 </div>
 
-                                <div className="flex gap-2 flex-shrink-0">
-                                    <Link href={`/employees/${id}/edit`}>
-                                        <Button variant="outline" size="sm"><Pencil className="h-4 w-4 mr-1" /> Edit</Button>
-                                    </Link>
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button variant="outline" size="sm" className="text-red-600 dark:text-red-400 hover:text-red-700">
-                                                <Trash2 className="h-4 w-4 mr-1" /> Delete
-                                            </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>Delete {employee.name}?</AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    This will permanently delete this employee and all their documents.
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            <AlertDialogFooter>
-                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700">
-                                                    {deleting ? 'Deleting...' : 'Delete'}
-                                                </AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </div>
+                                {isAdmin && (
+                                    <div className="flex gap-2 flex-shrink-0">
+                                        <Link href={`/employees/${id}/edit`}>
+                                            <Button variant="outline" size="sm"><Pencil className="h-4 w-4 mr-1" /> Edit</Button>
+                                        </Link>
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="outline" size="sm" className="text-red-600 dark:text-red-400 hover:text-red-700">
+                                                    <Trash2 className="h-4 w-4 mr-1" /> Delete
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Delete {employee.name}?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This will permanently delete this employee and all their documents.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700">
+                                                        {deleting ? 'Deleting...' : 'Delete'}
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -172,9 +178,11 @@ export default function EmployeeDetailPage() {
                             <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Documents</CardTitle>
                             <CardDescription>{documents.length} document{documents.length !== 1 ? 's' : ''}</CardDescription>
                         </div>
-                        <Button size="sm" onClick={() => setShowAddDoc(true)}>
-                            <Plus className="h-4 w-4 mr-1" /> Add Document
-                        </Button>
+                        {isAdmin && (
+                            <Button size="sm" onClick={() => setShowAddDoc(true)}>
+                                <Plus className="h-4 w-4 mr-1" /> Add Document
+                            </Button>
+                        )}
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -195,8 +203,8 @@ export default function EmployeeDetailPage() {
                                     <div
                                         key={doc.id}
                                         className={`flex items-center justify-between p-4 rounded-lg border transition-shadow hover:shadow-sm ${isPrimary
-                                                ? 'border-amber-400 dark:border-amber-600 bg-amber-50/50 dark:bg-amber-950/20'
-                                                : 'border-border/60'
+                                            ? 'border-amber-400 dark:border-amber-600 bg-amber-50/50 dark:bg-amber-950/20'
+                                            : 'border-border/60'
                                             }`}
                                     >
                                         <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -236,56 +244,73 @@ export default function EmployeeDetailPage() {
                                                 {status?.label || 'No Expiry'}
                                             </Badge>
 
-                                            {/* Toggle primary (only for docs that have an expiry date) */}
-                                            {hasExpiry && (
-                                                <Button
-                                                    variant={isPrimary ? 'default' : 'outline'}
-                                                    size="icon"
-                                                    title={isPrimary ? 'Unset as primary' : 'Set as primary document'}
-                                                    className={isPrimary ? 'bg-amber-500 hover:bg-amber-600 text-white h-8 w-8' : 'h-8 w-8'}
-                                                    onClick={async () => {
-                                                        try {
-                                                            await api.documents.togglePrimary(doc.id);
-                                                            toast.success(isPrimary ? 'Primary document unset' : 'Set as primary document');
-                                                            fetchEmployee();
-                                                        } catch {
-                                                            toast.error('Failed to toggle primary');
-                                                        }
-                                                    }}
-                                                >
-                                                    <Star className={`h-4 w-4 ${isPrimary ? 'fill-current' : ''}`} />
-                                                </Button>
-                                            )}
+                                            {/* Admin Actions */}
+                                            {isAdmin && (
+                                                <>
+                                                    {/* Toggle primary (only for docs that have an expiry date) */}
+                                                    {hasExpiry && (
+                                                        <Button
+                                                            variant={isPrimary ? 'default' : 'outline'}
+                                                            size="icon"
+                                                            title={isPrimary ? 'Unset as primary' : 'Set as primary document'}
+                                                            className={isPrimary ? 'bg-amber-500 hover:bg-amber-600 text-white h-8 w-8' : 'h-8 w-8'}
+                                                            onClick={async () => {
+                                                                try {
+                                                                    await api.documents.togglePrimary(doc.id);
+                                                                    toast.success(isPrimary ? 'Primary document unset' : 'Set as primary document');
+                                                                    fetchEmployee();
+                                                                } catch {
+                                                                    toast.error('Failed to toggle primary');
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Star className={`h-4 w-4 ${isPrimary ? 'fill-current' : ''}`} />
+                                                        </Button>
+                                                    )}
 
-                                            {/* Edit button */}
-                                            <Button
-                                                variant="ghost" size="icon"
-                                                className="text-muted-foreground hover:text-foreground"
-                                                onClick={() => setEditingDoc(doc)}
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </Button>
+                                                    {/* Renew button */}
+                                                    {hasExpiry && (
+                                                        <Button
+                                                            variant="ghost" size="icon"
+                                                            title="Renew Document"
+                                                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                                            onClick={() => setRenewingDoc(doc)}
+                                                        >
+                                                            <RefreshCw className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
 
-                                            {/* Delete button */}
-                                            <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-red-600 dark:hover:text-red-400">
-                                                        <Trash2 className="h-4 w-4" />
+                                                    {/* Edit button */}
+                                                    <Button
+                                                        variant="ghost" size="icon"
+                                                        className="text-muted-foreground hover:text-foreground"
+                                                        onClick={() => setEditingDoc(doc)}
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
                                                     </Button>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>Delete {doc.documentType}?</AlertDialogTitle>
-                                                        <AlertDialogDescription>This will permanently delete this document record.</AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                        <AlertDialogAction onClick={() => handleDeleteDocument(doc.id)} className="bg-red-600 hover:bg-red-700">
-                                                            Delete
-                                                        </AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
+
+                                                    {/* Delete button */}
+                                                    <AlertDialog>
+                                                        <AlertDialogTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-red-600 dark:hover:text-red-400">
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </AlertDialogTrigger>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>Delete {doc.documentType}?</AlertDialogTitle>
+                                                                <AlertDialogDescription>This will permanently delete this document record.</AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                <AlertDialogAction onClick={() => handleDeleteDocument(doc.id)} className="bg-red-600 hover:bg-red-700">
+                                                                    Delete
+                                                                </AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -309,6 +334,16 @@ export default function EmployeeDetailPage() {
                     document={editingDoc}
                     open={!!editingDoc}
                     onOpenChange={(open) => !open && setEditingDoc(null)}
+                    onSuccess={fetchEmployee}
+                />
+            )}
+
+            {/* Renew Document Dialog */}
+            {renewingDoc && (
+                <RenewDocumentDialog
+                    document={renewingDoc}
+                    open={!!renewingDoc}
+                    onOpenChange={(open) => !open && setRenewingDoc(null)}
                     onSuccess={fetchEmployee}
                 />
             )}

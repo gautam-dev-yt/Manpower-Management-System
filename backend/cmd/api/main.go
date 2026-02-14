@@ -102,54 +102,51 @@ func main() {
 		// Activity log (read-only)
 		r.Get("/api/activity", activityHandler.List)
 
-		// Companies (list is read-only for all roles)
+		// Companies — list is read-only for all roles
 		r.Get("/api/companies", companyHandler.List)
+
+		// Read-only employee & document endpoints — accessible to viewers
+		r.Get("/api/employees", employeeHandler.List)
+		r.Get("/api/employees/export", employeeHandler.Export)
+		r.Route("/api/employees/{id}", func(r chi.Router) {
+			r.Get("/", employeeHandler.GetByID)
+			r.Get("/documents", documentHandler.ListByEmployee)
+			r.Get("/salary", salaryHandler.ListByEmployee)
+		})
+
+		// Read-only salary & document endpoints — accessible to viewers
+		r.Get("/api/salary", salaryHandler.List)
+		r.Get("/api/salary/summary", salaryHandler.Summary)
+		r.Get("/api/salary/export", salaryHandler.Export)
+		r.Get("/api/documents/{id}", documentHandler.GetByID)
 
 		// Write operations restricted to admin role
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireRole("admin"))
+			r.Use(middleware.RequireMinRole("admin"))
 
 			// Company write operations
 			r.Post("/api/companies", companyHandler.Create)
 			r.Put("/api/companies/{id}", companyHandler.Update)
 			r.Delete("/api/companies/{id}", companyHandler.Delete)
 
-			// Employees (full CRUD)
-			r.Route("/api/employees", func(r chi.Router) {
-				r.Post("/", employeeHandler.Create)
-				r.Get("/", employeeHandler.List)
-				r.Get("/export", employeeHandler.Export)
+			// Employee write operations
+			r.Post("/api/employees", employeeHandler.Create)
+			r.Put("/api/employees/{id}", employeeHandler.Update)
+			r.Delete("/api/employees/{id}", employeeHandler.Delete)
 
-				r.Route("/{id}", func(r chi.Router) {
-					r.Get("/", employeeHandler.GetByID)
-					r.Put("/", employeeHandler.Update)
-					r.Delete("/", employeeHandler.Delete)
-
-					// Documents nested under employee
-					r.Post("/documents", documentHandler.Create)
-					r.Get("/documents", documentHandler.ListByEmployee)
-				})
+			// Document write operations (nested under employee for create)
+			r.Post("/api/employees/{employeeId}/documents", documentHandler.Create)
+			r.Route("/api/documents/{id}", func(r chi.Router) {
+				r.Put("/", documentHandler.Update)
+				r.Delete("/", documentHandler.Delete)
+				r.Patch("/primary", documentHandler.TogglePrimary)
+				r.Post("/renew", documentHandler.Renew)
 			})
 
-			// Salary management
-			r.Route("/api/salary", func(r chi.Router) {
-				r.Post("/generate", salaryHandler.Generate)
-				r.Get("/", salaryHandler.List)
-				r.Get("/summary", salaryHandler.Summary)
-				r.Get("/export", salaryHandler.Export)
-				r.Patch("/bulk-status", salaryHandler.BulkUpdateStatus)
-				r.Patch("/{id}/status", salaryHandler.UpdateStatus)
-			})
-
-			// Documents (direct access)
-			r.Route("/api/documents", func(r chi.Router) {
-				r.Route("/{id}", func(r chi.Router) {
-					r.Get("/", documentHandler.GetByID)
-					r.Put("/", documentHandler.Update)
-					r.Delete("/", documentHandler.Delete)
-					r.Patch("/primary", documentHandler.TogglePrimary)
-				})
-			})
+			// Salary write operations
+			r.Post("/api/salary/generate", salaryHandler.Generate)
+			r.Patch("/api/salary/bulk-status", salaryHandler.BulkUpdateStatus)
+			r.Patch("/api/salary/{id}/status", salaryHandler.UpdateStatus)
 		})
 	})
 

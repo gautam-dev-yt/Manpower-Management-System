@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"manpower-backend/internal/ctxkeys"
 	"manpower-backend/internal/database"
 	"manpower-backend/internal/models"
 )
@@ -60,6 +61,12 @@ func (h *SalaryHandler) Generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "generated_salary", "salary", "bulk", map[string]interface{}{
+		"month": req.Month, "year": req.Year, "count": tag.RowsAffected(),
+	})
+
 	JSON(w, http.StatusCreated, map[string]interface{}{
 		"message":  "Salary records generated",
 		"inserted": tag.RowsAffected(),
@@ -107,7 +114,7 @@ func (h *SalaryHandler) List(w http.ResponseWriter, r *http.Request) {
 		SELECT s.id, s.employee_id, s.month, s.year, s.amount, s.status,
 			s.paid_date::text, s.notes,
 			s.created_at::text, s.updated_at::text,
-			e.name, c.name
+			e.name, c.name, COALESCE(c.currency, 'AED')
 		FROM salary_records s
 		JOIN employees e ON s.employee_id = e.id
 		JOIN companies c ON e.company_id = c.id
@@ -128,7 +135,7 @@ func (h *SalaryHandler) List(w http.ResponseWriter, r *http.Request) {
 			&rec.ID, &rec.EmployeeID, &rec.Month, &rec.Year, &rec.Amount, &rec.Status,
 			&rec.PaidDate, &rec.Notes,
 			&rec.CreatedAt, &rec.UpdatedAt,
-			&rec.EmployeeName, &rec.CompanyName,
+			&rec.EmployeeName, &rec.CompanyName, &rec.Currency,
 		); err != nil {
 			log.Printf("Error scanning salary record: %v", err)
 			continue
@@ -189,6 +196,12 @@ func (h *SalaryHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "updated_status", "salary", id, map[string]interface{}{
+		"status": req.Status,
+	})
+
 	JSON(w, http.StatusOK, map[string]interface{}{
 		"data":    rec,
 		"message": "Status updated",
@@ -245,6 +258,12 @@ func (h *SalaryHandler) BulkUpdateStatus(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "bulk_updated_status", "salary", "bulk", map[string]interface{}{
+		"status": req.Status, "count": tag.RowsAffected(),
+	})
+
 	JSON(w, http.StatusOK, map[string]interface{}{
 		"message": fmt.Sprintf("Updated %d records", tag.RowsAffected()),
 		"updated": tag.RowsAffected(),
@@ -271,21 +290,33 @@ func (h *SalaryHandler) Summary(w http.ResponseWriter, r *http.Request) {
 
 	pool := h.db.GetPool()
 
+	// Calculate summary
+	// Note: Summing amounts of different currencies is conceptually wrong,
+	// but for this MVP we just sum raw values. Ideally frontend should warn if "Mixed".
 	var summary models.SalarySummary
 	err := pool.QueryRow(ctx, `
-		SELECT 
-			COALESCE(SUM(amount), 0) AS total_amount,
-			COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0) AS paid_amount,
-			COUNT(CASE WHEN status = 'pending' THEN 1 END) AS pending_count,
-			COUNT(CASE WHEN status = 'paid' THEN 1 END) AS paid_count,
-			COUNT(CASE WHEN status = 'partial' THEN 1 END) AS partial_count,
-			COUNT(*) AS total_count
-		FROM salary_records
-		WHERE month = $1 AND year = $2
+		WITH stats AS (
+			SELECT
+				COALESCE(SUM(s.amount), 0) as total_amount,
+				COALESCE(SUM(CASE WHEN s.status = 'paid' THEN s.amount ELSE 0 END), 0) as paid_amount,
+				count(CASE WHEN s.status = 'pending' THEN 1 END) as pending_count,
+				count(CASE WHEN s.status = 'paid' THEN 1 END) as paid_count,
+				count(CASE WHEN s.status = 'partial' THEN 1 END) as partial_count,
+				count(*) as total_count,
+				count(DISTINCT c.currency) as currency_count,
+				MAX(c.currency) as single_currency
+			FROM salary_records s
+			JOIN employees e ON s.employee_id = e.id
+			JOIN companies c ON e.company_id = c.id
+			WHERE s.month = $1 AND s.year = $2
+		)
+		SELECT total_amount, paid_amount, pending_count, paid_count, partial_count, total_count,
+			CASE WHEN currency_count > 1 THEN 'Mixed' ELSE COALESCE(single_currency, 'AED') END as currency
+		FROM stats
 	`, month, year).Scan(
 		&summary.TotalAmount, &summary.PaidAmount,
-		&summary.PendingCount, &summary.PaidCount,
-		&summary.PartialCount, &summary.TotalCount,
+		&summary.PendingCount, &summary.PaidCount, &summary.PartialCount, &summary.TotalCount,
+		&summary.Currency,
 	)
 	if err != nil {
 		log.Printf("Error fetching salary summary: %v", err)
@@ -319,7 +350,7 @@ func (h *SalaryHandler) Export(w http.ResponseWriter, r *http.Request) {
 	pool := h.db.GetPool()
 
 	rows, err := pool.Query(ctx, `
-		SELECT e.name, c.name, s.amount, s.status,
+		SELECT e.name, c.name, COALESCE(c.currency, 'AED'), s.amount, s.status,
 			COALESCE(s.paid_date::text, ''), COALESCE(s.notes, '')
 		FROM salary_records s
 		JOIN employees e ON s.employee_id = e.id
@@ -338,15 +369,68 @@ func (h *SalaryHandler) Export(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
 
-	fmt.Fprintln(w, "Employee,Company,Amount,Status,Paid Date,Notes")
+	fmt.Fprintln(w, "Employee,Company,Currency,Amount,Status,Paid Date,Notes")
 
 	for rows.Next() {
-		var name, company, status, paidDate, notes string
+		var name, company, currency, status, paidDate, notes string
 		var amount float64
-		if err := rows.Scan(&name, &company, &amount, &status, &paidDate, &notes); err != nil {
+		if err := rows.Scan(&name, &company, &currency, &amount, &status, &paidDate, &notes); err != nil {
 			continue
 		}
-		fmt.Fprintf(w, "%s,%s,%.2f,%s,%s,%s\n",
-			csvEscape(name), csvEscape(company), amount, status, paidDate, csvEscape(notes))
+		fmt.Fprintf(w, "%s,%s,%s,%.2f,%s,%s,%s\n",
+			csvEscape(name), csvEscape(company), csvEscape(currency), amount, status, paidDate, csvEscape(notes))
 	}
+}
+
+// ListByEmployee handles GET /api/employees/{id}/salary
+// Returns all salary records for a specific employee, ordered newest first.
+func (h *SalaryHandler) ListByEmployee(w http.ResponseWriter, r *http.Request) {
+	employeeID := chi.URLParam(r, "id")
+	if employeeID == "" {
+		JSONError(w, http.StatusBadRequest, "Employee ID is required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	pool := h.db.GetPool()
+
+	rows, err := pool.Query(ctx, `
+		SELECT s.id, s.employee_id, s.month, s.year, s.amount, s.status,
+			COALESCE(s.paid_date::text, ''), COALESCE(s.notes, ''),
+			s.created_at::text, s.updated_at::text,
+			c.name, COALESCE(c.currency, 'AED')
+		FROM salary_records s
+		JOIN employees e ON s.employee_id = e.id
+		JOIN companies c ON e.company_id = c.id
+		WHERE s.employee_id = $1
+		ORDER BY s.year DESC, s.month DESC
+	`, employeeID)
+	if err != nil {
+		log.Printf("Error fetching salary for employee %s: %v", employeeID, err)
+		JSONError(w, http.StatusInternalServerError, "Failed to fetch salary records")
+		return
+	}
+	defer rows.Close()
+
+	records := []models.SalaryRecordWithEmployee{}
+	for rows.Next() {
+		var rec models.SalaryRecordWithEmployee
+		if err := rows.Scan(
+			&rec.ID, &rec.EmployeeID, &rec.Month, &rec.Year, &rec.Amount, &rec.Status,
+			&rec.PaidDate, &rec.Notes,
+			&rec.CreatedAt, &rec.UpdatedAt,
+			&rec.CompanyName, &rec.Currency,
+		); err != nil {
+			log.Printf("Error scanning salary record: %v", err)
+			continue
+		}
+		records = append(records, rec)
+	}
+
+	JSON(w, http.StatusOK, map[string]interface{}{
+		"data":  records,
+		"total": len(records),
+	})
 }

@@ -15,6 +15,7 @@ import {
 import { Building2, Plus, Pencil, Trash2, Users, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { useUser } from '@/hooks/use-user';
 
 interface CompanyWithCount {
     id: string;
@@ -27,6 +28,7 @@ interface CompanyWithCount {
 export default function CompaniesPage() {
     const [companies, setCompanies] = useState<CompanyWithCount[]>([]);
     const [loading, setLoading] = useState(true);
+    const { isAdmin } = useUser();
 
     // Add/Edit dialog state
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -113,11 +115,13 @@ export default function CompaniesPage() {
                 </div>
 
                 <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button onClick={openAdd} className="gap-2">
-                            <Plus className="h-4 w-4" /> Add Company
-                        </Button>
-                    </DialogTrigger>
+                    {isAdmin && (
+                        <DialogTrigger asChild>
+                            <Button onClick={openAdd} className="gap-2">
+                                <Plus className="h-4 w-4" /> Add Company
+                            </Button>
+                        </DialogTrigger>
+                    )}
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>{editingId ? 'Edit Company' : 'Add Company'}</DialogTitle>
@@ -168,37 +172,39 @@ export default function CompaniesPage() {
                                     <span>{company.employeeCount} employee{company.employeeCount !== 1 ? 's' : ''}</span>
                                 </div>
 
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(company)}>
-                                        <Pencil className="h-3.5 w-3.5" />
-                                    </Button>
+                                {isAdmin && (
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(company)}>
+                                            <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
 
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 dark:text-red-400">
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>Delete {company.name}?</AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    This will also delete all {company.employeeCount} employees
-                                                    and their documents. This action cannot be undone.
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            <AlertDialogFooter>
-                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                <AlertDialogAction
-                                                    onClick={() => handleDelete(company.id)}
-                                                    className="bg-red-600 hover:bg-red-700"
-                                                >
-                                                    Delete
-                                                </AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </div>
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 dark:text-red-400">
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Delete {company.name}?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This will also delete all {company.employeeCount} employees
+                                                        and their documents. This action cannot be undone.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction
+                                                        onClick={() => handleDelete(company.id)}
+                                                        className="bg-red-600 hover:bg-red-700"
+                                                    >
+                                                        Delete
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -211,9 +217,11 @@ export default function CompaniesPage() {
                     <Building2 className="h-12 w-12 text-muted-foreground/50 mx-auto" />
                     <h2 className="text-lg font-semibold text-foreground">No companies yet</h2>
                     <p className="text-muted-foreground">Add your first company to start managing employees.</p>
-                    <Button onClick={openAdd} className="gap-2 mt-2">
-                        <Plus className="h-4 w-4" /> Add Company
-                    </Button>
+                    {isAdmin && (
+                        <Button onClick={openAdd} className="gap-2 mt-2">
+                            <Plus className="h-4 w-4" /> Add Company
+                        </Button>
+                    )}
                 </div>
             )}
         </div>

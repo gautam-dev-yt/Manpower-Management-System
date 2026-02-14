@@ -3,6 +3,8 @@
 export interface Company {
     id: string;
     name: string;
+    currency: string;
+    employeeCount?: number;
     createdAt: string;
     updatedAt: string;
 }
@@ -72,6 +74,7 @@ export interface SalaryRecord {
 export interface SalaryRecordWithEmployee extends SalaryRecord {
     employeeName: string;
     companyName: string;
+    currency: string;
 }
 
 export interface SalarySummary {
@@ -81,6 +84,7 @@ export interface SalarySummary {
     paidCount: number;
     partialCount: number;
     totalCount: number;
+    currency: string;
 }
 
 // ── Notifications ─────────────────────────────────────────────

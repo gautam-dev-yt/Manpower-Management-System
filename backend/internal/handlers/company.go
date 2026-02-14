@@ -33,11 +33,11 @@ func (h *CompanyHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	// Include employee count per company for the UI cards
 	rows, err := pool.Query(ctx, `
-		SELECT c.id, c.name, c.created_at::text, c.updated_at::text,
+		SELECT c.id, c.name, COALESCE(c.currency, 'AED'), c.created_at::text, c.updated_at::text,
 			COUNT(e.id) AS employee_count
 		FROM companies c
 		LEFT JOIN employees e ON e.company_id = c.id
-		GROUP BY c.id, c.name, c.created_at, c.updated_at
+		GROUP BY c.id, c.name, c.currency, c.created_at, c.updated_at
 		ORDER BY c.name ASC
 	`)
 	if err != nil {
@@ -55,7 +55,7 @@ func (h *CompanyHandler) List(w http.ResponseWriter, r *http.Request) {
 	companies := []CompanyWithCount{}
 	for rows.Next() {
 		var c CompanyWithCount
-		if err := rows.Scan(&c.ID, &c.Name, &c.CreatedAt, &c.UpdatedAt, &c.EmployeeCount); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Currency, &c.CreatedAt, &c.UpdatedAt, &c.EmployeeCount); err != nil {
 			log.Printf("Error scanning company: %v", err)
 			continue
 		}
@@ -70,7 +70,8 @@ func (h *CompanyHandler) List(w http.ResponseWriter, r *http.Request) {
 // Create adds a new company.
 func (h *CompanyHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
+		Name     string `json:"name"`
+		Currency string `json:"currency"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		JSONError(w, http.StatusBadRequest, "Invalid JSON body")
@@ -80,6 +81,10 @@ func (h *CompanyHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.Name == "" {
 		JSONError(w, http.StatusUnprocessableEntity, "Company name is required")
 		return
+	}
+
+	if req.Currency == "" {
+		req.Currency = "AED"
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -92,11 +97,11 @@ func (h *CompanyHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var company models.Company
 	err := pool.QueryRow(ctx, `
-		INSERT INTO companies (name, user_id)
-		VALUES ($1, $2)
-		RETURNING id, name, created_at::text, updated_at::text
-	`, req.Name, nilIfEmptyStr(userID),
-	).Scan(&company.ID, &company.Name, &company.CreatedAt, &company.UpdatedAt)
+		INSERT INTO companies (name, currency, user_id)
+		VALUES ($1, $2, $3)
+		RETURNING id, name, currency, created_at::text, updated_at::text
+	`, req.Name, req.Currency, nilIfEmptyStr(userID),
+	).Scan(&company.ID, &company.Name, &company.Currency, &company.CreatedAt, &company.UpdatedAt)
 
 	if err != nil {
 		if isDuplicateKeyError(err) {
@@ -119,7 +124,8 @@ func (h *CompanyHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	var req struct {
-		Name string `json:"name"`
+		Name     string `json:"name"`
+		Currency string `json:"currency"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		JSONError(w, http.StatusBadRequest, "Invalid JSON body")
@@ -131,6 +137,10 @@ func (h *CompanyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Currency == "" {
+		req.Currency = "AED"
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
@@ -138,11 +148,11 @@ func (h *CompanyHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var company models.Company
 	err := pool.QueryRow(ctx, `
-		UPDATE companies SET name = $1, updated_at = NOW()
-		WHERE id = $2
-		RETURNING id, name, created_at::text, updated_at::text
-	`, req.Name, id,
-	).Scan(&company.ID, &company.Name, &company.CreatedAt, &company.UpdatedAt)
+		UPDATE companies SET name = $1, currency = $2, updated_at = NOW()
+		WHERE id = $3
+		RETURNING id, name, currency, created_at::text, updated_at::text
+	`, req.Name, req.Currency, id,
+	).Scan(&company.ID, &company.Name, &company.Currency, &company.CreatedAt, &company.UpdatedAt)
 
 	if err != nil {
 		if isDuplicateKeyError(err) {

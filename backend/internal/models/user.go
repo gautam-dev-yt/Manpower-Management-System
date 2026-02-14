@@ -13,10 +13,12 @@ type User struct {
 }
 
 // RegisterRequest contains the fields needed to create a new account.
+// Role is optional — defaults to "viewer" for safety.
 type RegisterRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	Name     string `json:"name"`
+	Role     string `json:"role,omitempty"` // "admin" or "viewer" (default)
 }
 
 // Validate checks that all required registration fields are present.

@@ -70,14 +70,25 @@ func Auth(jwtSecret string) func(http.Handler) http.Handler {
 	}
 }
 
-// RequireRole returns middleware that restricts access to users with the specified role.
+// roleLevel maps role names to permission levels for hierarchical access checks.
+// Higher numbers mean more permissions.
+var roleLevel = map[string]int{
+	"viewer": 1,
+	"admin":  2,
+}
+
+// RequireMinRole returns middleware that restricts access to users with at least
+// the specified role level. Role hierarchy: admin > viewer.
 // Must be used after Auth middleware (depends on role being in context).
-func RequireRole(role string) func(http.Handler) http.Handler {
+func RequireMinRole(minRole string) func(http.Handler) http.Handler {
+	minLevel := roleLevel[minRole]
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userRole, _ := r.Context().Value(ctxkeys.UserRole).(string)
+			level := roleLevel[userRole]
 
-			if userRole != role {
+			if level < minLevel {
 				writeError(w, http.StatusForbidden, "Insufficient permissions")
 				return
 			}

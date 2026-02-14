@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"manpower-backend/internal/ctxkeys"
 	"manpower-backend/internal/database"
 	"manpower-backend/internal/models"
 )
@@ -115,6 +116,12 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		JSONError(w, http.StatusInternalServerError, "Failed to create employee")
 		return
 	}
+
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "created", "employee", employee.ID, map[string]interface{}{
+		"name": employee.Name, "trade": employee.Trade,
+	})
 
 	JSON(w, http.StatusCreated, map[string]interface{}{
 		"data":    employee,
@@ -469,6 +476,12 @@ func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "updated", "employee", employee.ID, map[string]interface{}{
+		"name": employee.Name,
+	})
+
 	JSON(w, http.StatusOK, map[string]interface{}{
 		"data":    employee,
 		"message": "Employee updated successfully",
@@ -501,6 +514,10 @@ func (h *EmployeeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		JSONError(w, http.StatusNotFound, "Employee not found")
 		return
 	}
+
+	// Audit trail
+	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
+	logActivity(pool, userID, "deleted", "employee", id, nil)
 
 	JSON(w, http.StatusOK, map[string]string{
 		"message": "Employee deleted successfully",

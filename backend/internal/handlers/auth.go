@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -31,6 +32,7 @@ func NewAuthHandler(db database.Service, jwtSecret string) *AuthHandler {
 
 // Register creates a new user account.
 // Hashes the password with bcrypt and returns a JWT token on success.
+// New users default to the "viewer" role for security; pass role="admin" to grant full access.
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req models.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -44,6 +46,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			"details": errs,
 		})
 		return
+	}
+
+	// Determine role — default to "viewer" for safety.
+	// Only "admin" and "viewer" are valid roles.
+	role := "viewer"
+	if req.Role == "admin" {
+		role = "admin"
 	}
 
 	// Hash the password (cost 12 balances security and speed)
@@ -63,9 +72,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	err = pool.QueryRow(ctx, `
 		INSERT INTO users (email, password_hash, name, role)
-		VALUES ($1, $2, $3, 'admin')
+		VALUES ($1, $2, $3, $4)
 		RETURNING id, email, name, role, created_at::text, updated_at::text
-	`, req.Email, string(hashedPassword), req.Name,
+	`, req.Email, string(hashedPassword), req.Name, role,
 	).Scan(
 		&user.ID, &user.Email, &user.Name,
 		&user.Role, &user.CreatedAt, &user.UpdatedAt,
@@ -145,9 +154,6 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear password hash before sending response
-	user.PasswordHash = ""
-
 	JSON(w, http.StatusOK, models.AuthResponse{
 		Token: token,
 		User:  user,
@@ -197,18 +203,9 @@ func (h *AuthHandler) generateToken(userID, role string) (string, error) {
 
 // isDuplicateKeyError checks if a PostgreSQL error is a unique constraint violation.
 func isDuplicateKeyError(err error) bool {
-	return err != nil && (contains(err.Error(), "duplicate key") || contains(err.Error(), "23505"))
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
+	if err == nil {
+		return false
 	}
-	return false
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "23505")
 }
