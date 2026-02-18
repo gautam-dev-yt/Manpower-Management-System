@@ -71,7 +71,7 @@ export const DOC_TYPE_CONFIG: Record<string, DocTypeConfig> = {
         numberPlaceholder: 'e.g. 201/2024/1234567',
         hasExpiry: true,
         expiryLabel: 'Expiry Date',
-        defaultGraceDays: 30,
+        defaultGraceDays: 0,
         defaultFinePerDay: 50,
         defaultFineType: 'daily',
         defaultFineCap: 0,

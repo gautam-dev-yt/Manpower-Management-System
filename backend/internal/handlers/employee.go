@@ -163,11 +163,11 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	`, req.CompanyID)
 
 	type mandatoryDoc struct {
-		DocType   string
-		GraceDays int
+		DocType    string
+		GraceDays  int
 		FinePerDay float64
-		FineType  string
-		FineCap   float64
+		FineType   string
+		FineCap    float64
 	}
 	var mandatoryDocs []mandatoryDoc
 
@@ -321,12 +321,12 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Count total for pagination
-	// Per-document status accounts for grace periods:
+	// Per-document status hierarchy (severity-first):
 	//   penalty_active = expired AND past grace period
 	//   in_grace       = expired but within grace period
 	//   expiring_soon  = within 30 days of expiry
-	//   valid          = all docs have expiry > 30 days
 	//   incomplete     = missing expiry_date or document_number
+	//   valid          = all docs have expiry > 30 days
 	//   none           = no mandatory docs at all
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(*) FROM employees e
@@ -334,10 +334,10 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 			SELECT
 				CASE
 					WHEN COUNT(*) = 0 THEN 'none'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date >= CURRENT_DATE AND expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
 					WHEN COUNT(*) FILTER (WHERE expiry_date IS NULL OR document_number IS NULL OR document_number = '') > 0 THEN 'incomplete'
-					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
-					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
-					WHEN COUNT(*) FILTER (WHERE expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
 					ELSE 'valid'
 				END AS compliance_status
 			FROM documents
@@ -371,10 +371,10 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 			SELECT
 				CASE
 					WHEN COUNT(*) = 0 THEN 'none'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date >= CURRENT_DATE AND expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
 					WHEN COUNT(*) FILTER (WHERE expiry_date IS NULL OR document_number IS NULL OR document_number = '') > 0 THEN 'incomplete'
-					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
-					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
-					WHEN COUNT(*) FILTER (WHERE expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
 					ELSE 'valid'
 				END AS compliance_status,
 				MIN(expiry_date) - CURRENT_DATE AS nearest_expiry_days,
@@ -461,10 +461,10 @@ func (h *EmployeeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			SELECT
 				CASE
 					WHEN COUNT(*) = 0 THEN 'none'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date >= CURRENT_DATE AND expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
 					WHEN COUNT(*) FILTER (WHERE expiry_date IS NULL OR document_number IS NULL OR document_number = '') > 0 THEN 'incomplete'
-					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
-					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
-					WHEN COUNT(*) FILTER (WHERE expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
 					ELSE 'valid'
 				END AS compliance_status,
 				MIN(expiry_date) - CURRENT_DATE AS nearest_expiry_days,

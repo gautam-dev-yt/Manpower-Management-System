@@ -67,8 +67,8 @@ const MandatoryDocCount = 7
 //   - docNumber:  the document identification number (empty → incomplete)
 //   - now:        current time (injected for testability)
 func ComputeStatus(expiryDate *time.Time, graceDays int, docNumber string, now time.Time) string {
-	// Missing essential data → incomplete
-	if expiryDate == nil || docNumber == "" {
+	// No expiry date at all → incomplete (empty doc slot)
+	if expiryDate == nil {
 		return StatusIncomplete
 	}
 
@@ -76,18 +76,24 @@ func ComputeStatus(expiryDate *time.Time, graceDays int, docNumber string, now t
 	expiry := truncateToDay(*expiryDate)
 	daysUntilExpiry := int(expiry.Sub(today).Hours() / 24)
 
+	// Severity-first: check penalty/grace/expiring BEFORE incomplete.
+	// A doc with an expiry date that's past is in penalty even if doc number is missing.
 	switch {
-	case daysUntilExpiry > 30:
-		return StatusValid
-	case daysUntilExpiry > 0:
-		return StatusExpiringSoon
-	case daysUntilExpiry <= 0 && graceDays > 0 && -daysUntilExpiry <= graceDays:
-		// Expired but within grace window (only if grace period is configured)
-		return StatusInGrace
-	default:
+	case daysUntilExpiry <= 0 && (graceDays == 0 || -daysUntilExpiry > graceDays):
 		// Past grace period (or no grace period) — penalties apply
 		return StatusPenaltyActive
+	case daysUntilExpiry <= 0 && graceDays > 0 && -daysUntilExpiry <= graceDays:
+		// Expired but within grace window
+		return StatusInGrace
+	case daysUntilExpiry > 0 && daysUntilExpiry <= 30:
+		return StatusExpiringSoon
 	}
+
+	// Not in any severity state — check if doc number is missing
+	if docNumber == "" {
+		return StatusIncomplete
+	}
+	return StatusValid
 }
 
 // ── Fine Calculation ─────────────────────────────────────────────
