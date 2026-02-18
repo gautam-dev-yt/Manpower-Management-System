@@ -43,6 +43,7 @@ func runCycle(db database.Service) {
 		SELECT
 			d.id, d.employee_id, d.document_type, d.expiry_date,
 			d.grace_period_days, d.fine_per_day, d.document_number,
+			d.fine_type, d.fine_cap,
 			e.name AS employee_name,
 			c.name AS company_name,
 			u.id   AS user_id
@@ -69,6 +70,8 @@ func runCycle(db database.Service) {
 		GraceDays   int
 		FinePerDay  float64
 		DocNumber   *string
+		FineType    string
+		FineCap     float64
 		EmpName     string
 		CompanyName string
 		UserID      string
@@ -80,6 +83,7 @@ func runCycle(db database.Service) {
 		if err := rows.Scan(
 			&a.DocID, &a.EmpID, &a.DocType, &a.ExpiryDate,
 			&a.GraceDays, &a.FinePerDay, &a.DocNumber,
+			&a.FineType, &a.FineCap,
 			&a.EmpName, &a.CompanyName, &a.UserID,
 		); err != nil {
 			log.Printf("[cron] scan error: %v", err)
@@ -115,7 +119,7 @@ func runCycle(db database.Service) {
 		var title, message, nType string
 		switch status {
 		case compliance.StatusPenaltyActive:
-			fine := compliance.ComputeFine(expiry, a.GraceDays, a.FinePerDay, "daily", 0, now)
+			fine := compliance.ComputeFine(expiry, a.GraceDays, a.FinePerDay, a.FineType, a.FineCap, now)
 			title = fmt.Sprintf("🚨 %s – PENALTY ACTIVE", a.DocType)
 			message = fmt.Sprintf(
 				"%s (%s): %s expired %d days ago. Estimated fine: %.0f AED.",

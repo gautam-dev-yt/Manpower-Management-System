@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { useTheme } from '@/context/theme-context';
-import { Users, LayoutDashboard, Building2, Sun, Moon, LogOut, Bell, DollarSign, ClipboardList } from 'lucide-react';
+import { Users, LayoutDashboard, Building2, Sun, Moon, LogOut, Bell, DollarSign, ClipboardList, UserCog, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -23,6 +23,11 @@ const navItems = [
     { href: '/companies', label: 'Companies', icon: Building2 },
     { href: '/salary', label: 'Salary', icon: DollarSign },
     { href: '/activity', label: 'Activity', icon: ClipboardList },
+];
+
+const adminNavItems = [
+    { href: '/users', label: 'Users', icon: UserCog },
+    { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 // Pages that render without the navigation bar
@@ -71,7 +76,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                         {/* Navigation Links */}
                         <nav className="flex items-center gap-1">
-                            {navItems.map((item) => {
+                            {[...navItems, ...(user.role === 'admin' ? adminNavItems : [])].map((item) => {
                                 const isActive =
                                     item.href === '/'
                                         ? pathname === '/'

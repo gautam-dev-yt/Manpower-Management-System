@@ -5,6 +5,7 @@ package compliance
 
 import (
 	"math"
+	"strings"
 	"time"
 )
 
@@ -80,11 +81,11 @@ func ComputeStatus(expiryDate *time.Time, graceDays int, docNumber string, now t
 		return StatusValid
 	case daysUntilExpiry > 0:
 		return StatusExpiringSoon
-	case daysUntilExpiry <= 0 && -daysUntilExpiry <= graceDays:
-		// Expired but within grace window
+	case daysUntilExpiry <= 0 && graceDays > 0 && -daysUntilExpiry <= graceDays:
+		// Expired but within grace window (only if grace period is configured)
 		return StatusInGrace
 	default:
-		// Past grace period — penalties apply
+		// Past grace period (or no grace period) — penalties apply
 		return StatusPenaltyActive
 	}
 }
@@ -195,11 +196,17 @@ func DisplayName(docType string) string {
 			return md.DisplayName
 		}
 	}
-	// Fallback: capitalize first letter
-	if len(docType) > 0 {
-		return string(docType[0]-32) + docType[1:]
+	// Fallback: replace underscores with spaces and title-case each word
+	if docType == "" {
+		return "Document"
 	}
-	return docType
+	words := strings.Split(strings.ReplaceAll(docType, "_", " "), " ")
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 // IsMandatoryType checks if a document type is in the mandatory list.

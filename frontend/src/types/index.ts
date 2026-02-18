@@ -46,7 +46,7 @@ export interface Employee {
 export interface EmployeeWithCompany extends Employee {
     companyName: string;
     companyCurrency: string;
-    complianceStatus: 'expired' | 'expiring' | 'valid' | 'incomplete' | 'none';
+    complianceStatus: 'penalty_active' | 'in_grace' | 'expiring_soon' | 'valid' | 'incomplete' | 'none' | 'expired' | 'expiring';
     nearestExpiryDays?: number | null;
     docsComplete: number;
     docsTotal: number;
@@ -171,9 +171,11 @@ export interface ExpiryAlert {
     documentType: string;
     expiryDate: string;
     daysLeft: number;
-    status: 'expired' | 'urgent' | 'warning';
+    status: string;
     estimatedFine: number;
     finePerDay: number;
+    graceDaysRemaining?: number | null;
+    daysInPenalty?: number | null;
 }
 
 // ── Compliance Stats ──────────────────────────────────────────
@@ -269,6 +271,55 @@ export interface ApiError {
     error: string;
     message: string;
     status: number;
+}
+
+// ── Admin Settings ───────────────────────────────────────────
+
+export interface AdminDocumentType {
+    id: string;
+    docType: string;
+    displayName: string;
+    isMandatory: boolean;
+    hasExpiry: boolean;
+    numberLabel: string;
+    numberPlaceholder: string;
+    expiryLabel: string;
+    sortOrder: number;
+    metadataFields: MetadataFieldDef[];
+    isSystem: boolean;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface MetadataFieldDef {
+    key: string;
+    label: string;
+    type: 'text' | 'select' | 'number' | 'date';
+    placeholder?: string;
+    options?: { value: string; label: string }[];
+    required?: boolean;
+}
+
+export interface ComplianceRuleRow {
+    docType: string;
+    displayName: string;
+    globalMandatory: boolean;
+    gracePeriodDays: number;
+    finePerDay: number;
+    fineType: string;
+    fineCap: number;
+    companyMandatory: boolean | null;
+    ruleId: string | null;
+}
+
+export interface AdminUser {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    createdAt: string;
+    updatedAt: string;
 }
 
 export interface EmployeeFilters {

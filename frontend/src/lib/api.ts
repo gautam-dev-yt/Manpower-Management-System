@@ -1,4 +1,7 @@
 import type {
+    AdminDocumentType,
+    AdminUser,
+    ComplianceRuleRow,
     Employee,
     EmployeeWithCompany,
     Document,
@@ -320,6 +323,58 @@ export const api = {
 
     // ── File Upload ───────────────────────────────────────────
     upload: uploadFile,
+
+    // ── User Management (admin-only) ─────────────────────────
+    users: {
+        list: () => fetcher<{ data: AdminUser[] }>('/api/users'),
+        updateRole: (id: string, role: string) =>
+            fetcher<{ data: AdminUser; message: string }>(`/api/users/${id}/role`, {
+                method: 'PUT',
+                body: JSON.stringify({ role }),
+            }),
+        delete: (id: string) =>
+            fetcher<{ message: string }>(`/api/users/${id}`, { method: 'DELETE' }),
+    },
+
+    // ── Document Types ───────────────────────────────────────
+    documentTypes: {
+        list: () => fetcher<{ data: AdminDocumentType[] }>('/api/document-types'),
+        create: (data: {
+            docType: string; displayName: string; hasExpiry?: boolean;
+            numberLabel?: string; numberPlaceholder?: string; expiryLabel?: string;
+            sortOrder?: number; metadataFields?: unknown[];
+        }) =>
+            fetcher<{ data: AdminDocumentType; message: string }>('/api/admin/document-types', {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
+        update: (id: string, data: Record<string, unknown>) =>
+            fetcher<{ data: AdminDocumentType; message: string }>(`/api/admin/document-types/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(data),
+            }),
+        delete: (id: string) =>
+            fetcher<{ message: string }>(`/api/admin/document-types/${id}`, { method: 'DELETE' }),
+    },
+
+    // ── Compliance Rules (admin-only) ────────────────────────
+    complianceRules: {
+        list: (companyId?: string) =>
+            fetcher<{ data: ComplianceRuleRow[] }>(
+                `/api/admin/compliance-rules${companyId ? `?company_id=${companyId}` : ''}`
+            ),
+        upsert: (data: {
+            companyId?: string | null;
+            rules: Array<{
+                docType: string; gracePeriodDays: number; finePerDay: number;
+                fineType: string; fineCap: number; isMandatory?: boolean | null;
+            }>;
+        }) =>
+            fetcher<{ message: string }>('/api/admin/compliance-rules', {
+                method: 'PUT',
+                body: JSON.stringify(data),
+            }),
+    },
 };
 
 export { ApiClientError };

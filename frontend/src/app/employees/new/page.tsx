@@ -72,8 +72,16 @@ export default function AddEmployeePage() {
         try {
             setSubmitting(true);
             const res = await api.employees.create(form);
-            toast.success('Employee created successfully!');
-            router.push(`/employees/${res.data.id}`);
+            const empId = res.data.id;
+            toast.success('Employee created — 7 document slots ready!', {
+                description: 'Fill in the mandatory documents to start compliance tracking.',
+                duration: 8000,
+                action: {
+                    label: 'Fill documents now →',
+                    onClick: () => router.push(`/employees/${empId}`),
+                },
+            });
+            router.push(`/employees/${empId}`);
         } catch (err) {
             console.error('Failed to create employee:', err);
             toast.error('Failed to create employee');

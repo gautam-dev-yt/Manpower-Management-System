@@ -34,7 +34,8 @@ func (h *DashboardHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	pool := h.db.GetPool()
 	metrics := models.DashboardMetrics{}
 
-	err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM employees").Scan(&metrics.TotalEmployees)
+	// Exclude exited employees for consistency with compliance stats
+	err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM employees WHERE exit_type IS NULL").Scan(&metrics.TotalEmployees)
 	if err != nil {
 		log.Printf("Error querying total employees: %v", err)
 		JSONError(w, http.StatusInternalServerError, "Failed to fetch metrics")
@@ -42,9 +43,11 @@ func (h *DashboardHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM documents 
-		WHERE is_mandatory = TRUE AND expiry_date IS NOT NULL
-		  AND expiry_date > CURRENT_DATE + INTERVAL '30 days'
+		SELECT COUNT(*) FROM documents d
+		JOIN employees e ON d.employee_id = e.id
+		WHERE d.is_mandatory = TRUE AND d.expiry_date IS NOT NULL
+		  AND d.expiry_date > CURRENT_DATE + INTERVAL '30 days'
+		  AND e.exit_type IS NULL
 	`).Scan(&metrics.ActiveDocuments)
 	if err != nil {
 		log.Printf("Error querying active documents: %v", err)
@@ -53,9 +56,11 @@ func (h *DashboardHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM documents 
-		WHERE is_mandatory = TRUE AND expiry_date IS NOT NULL
-		  AND expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+		SELECT COUNT(*) FROM documents d
+		JOIN employees e ON d.employee_id = e.id
+		WHERE d.is_mandatory = TRUE AND d.expiry_date IS NOT NULL
+		  AND d.expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
+		  AND e.exit_type IS NULL
 	`).Scan(&metrics.ExpiringSoon)
 	if err != nil {
 		log.Printf("Error querying expiring soon: %v", err)
@@ -63,10 +68,14 @@ func (h *DashboardHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Expired: past expiry date AND past grace period (consistent with compliance engine)
 	err = pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM documents 
-		WHERE is_mandatory = TRUE AND expiry_date IS NOT NULL
-		  AND expiry_date < CURRENT_DATE
+		SELECT COUNT(*) FROM documents d
+		JOIN employees e ON d.employee_id = e.id
+		WHERE d.is_mandatory = TRUE AND d.expiry_date IS NOT NULL
+		  AND d.expiry_date < CURRENT_DATE
+		  AND (d.expiry_date + d.grace_period_days * INTERVAL '1 day') < CURRENT_DATE
+		  AND e.exit_type IS NULL
 	`).Scan(&metrics.Expired)
 	if err != nil {
 		log.Printf("Error querying expired: %v", err)
@@ -87,16 +96,12 @@ func (h *DashboardHandler) GetExpiryAlerts(w http.ResponseWriter, r *http.Reques
 	pool := h.db.GetPool()
 
 	rows, err := pool.Query(ctx, `
-		SELECT 
+		SELECT
 			d.id, e.id, e.name, c.name, d.document_type,
 			d.expiry_date::text,
 			(d.expiry_date - CURRENT_DATE) AS days_left,
 			d.grace_period_days, d.fine_per_day, d.fine_type, d.fine_cap,
-			CASE
-				WHEN d.expiry_date < CURRENT_DATE THEN 'expired'
-				WHEN d.expiry_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'urgent'
-				ELSE 'warning'
-			END AS status
+			d.document_number
 		FROM documents d
 		JOIN employees e ON d.employee_id = e.id
 		JOIN companies c ON e.company_id = c.id
@@ -119,21 +124,29 @@ func (h *DashboardHandler) GetExpiryAlerts(w http.ResponseWriter, r *http.Reques
 		var graceDays int
 		var finePerDay, fineCap float64
 		var fineType string
+		var docNumber *string
 
 		if err := rows.Scan(
 			&a.DocumentID, &a.EmployeeID, &a.EmployeeName,
 			&a.CompanyName, &a.DocumentType, &a.ExpiryDate,
 			&a.DaysLeft,
 			&graceDays, &finePerDay, &fineType, &fineCap,
-			&a.Status,
+			&docNumber,
 		); err != nil {
 			log.Printf("Error scanning alert: %v", err)
 			continue
 		}
 
-		// Compute the estimated fine using the compliance engine
-		if expiryTime, err := time.Parse("2006-01-02", a.ExpiryDate); err == nil {
+		// Use the compliance engine for accurate status (in_grace vs penalty_active)
+		if expiryTime, parseErr := time.Parse("2006-01-02", a.ExpiryDate); parseErr == nil {
+			docNum := ""
+			if docNumber != nil {
+				docNum = *docNumber
+			}
+			a.Status = compliance.ComputeStatus(&expiryTime, graceDays, docNum, now)
 			a.EstimatedFine = compliance.ComputeFine(expiryTime, graceDays, finePerDay, fineType, fineCap, now)
+			a.GraceDaysRemaining = compliance.GraceDaysRemaining(&expiryTime, graceDays, now)
+			a.DaysInPenalty = compliance.DaysInPenalty(&expiryTime, graceDays, now)
 		}
 		a.FinePerDay = finePerDay
 
@@ -255,7 +268,10 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 		if expiryTime != nil && status == compliance.StatusPenaltyActive {
 			fine := compliance.ComputeFine(*expiryTime, graceDays, finePerDay, fineType, fineCap, now)
 			stats.TotalAccumulated += fine
-			stats.TotalDailyFine += finePerDay
+			// Only add to daily exposure for actual daily-type fines
+			if fineType == compliance.FineTypeDaily {
+				stats.TotalDailyFine += finePerDay
+			}
 		}
 	}
 
@@ -264,15 +280,17 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 		stats.CompletionRate = float64(totalComplete) / float64(stats.TotalDocuments) * 100
 	}
 
-	// Per-company compliance breakdown
+	// Per-company compliance breakdown (grace-period-aware)
 	companyRows, err := pool.Query(ctx, `
 		SELECT c.id, c.name, COUNT(DISTINCT e.id) AS emp_count,
 			COUNT(d.id) FILTER (WHERE d.expiry_date IS NOT NULL 
 				AND d.expiry_date < CURRENT_DATE
-				AND d.file_url != '') AS penalty_count,
+				AND (d.expiry_date + d.grace_period_days * INTERVAL '1 day') < CURRENT_DATE
+			) AS penalty_count,
 			COUNT(d.id) FILTER (WHERE d.document_number IS NULL 
-				OR d.expiry_date IS NULL 
-				OR d.file_url = '') AS incomplete_count
+				OR d.document_number = ''
+				OR d.expiry_date IS NULL
+			) AS incomplete_count
 		FROM companies c
 		LEFT JOIN employees e ON e.company_id = c.id AND e.exit_type IS NULL
 		LEFT JOIN documents d ON d.employee_id = e.id AND d.is_mandatory = TRUE

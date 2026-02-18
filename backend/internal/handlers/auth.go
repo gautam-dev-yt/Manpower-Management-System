@@ -48,12 +48,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine role — default to "viewer" for safety.
-	// Only "admin" and "viewer" are valid roles.
+	// All new users are registered as "viewer" for security.
+	// Admin role is granted by existing admins via User Management.
 	role := "viewer"
-	if req.Role == "admin" {
-		role = "admin"
-	}
 
 	// Hash the password (cost 12 balances security and speed)
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), 12)

@@ -54,15 +54,21 @@ function getComplianceInfo(emp: EmployeeWithCompany) {
     const absDays = Math.abs(days);
     const urgentName = docDisplayName(emp.urgentDocType);
 
-    if (emp.complianceStatus === 'expired') {
-        const s = getStatusConfig('expired');
+    if (emp.complianceStatus === 'penalty_active' || emp.complianceStatus === 'expired') {
+        const s = getStatusConfig('penalty_active');
         const others = emp.expiredCount - 1;
         const who = others > 0 ? `${urgentName} +${others} other${others > 1 ? 's' : ''}` : urgentName;
-        const when = absDays === 0 ? 'today' : absDays === 1 ? '1 day ago' : `${absDays} days ago — fine risk`;
-        return { text: `${who} expired`, sub: when, color: s.text, dotColor: s.dot, badgeColor: s.badge, badgeLabel: s.label };
+        const when = absDays === 0 ? 'today' : absDays === 1 ? '1 day ago' : `${absDays} days ago — fines active`;
+        return { text: `${who} — penalty active`, sub: when, color: s.text, dotColor: s.dot, badgeColor: s.badge, badgeLabel: s.label };
     }
-    if (emp.complianceStatus === 'expiring') {
-        const s = getStatusConfig('expiring');
+    if (emp.complianceStatus === 'in_grace') {
+        const s = getStatusConfig('in_grace');
+        const who = urgentName;
+        const when = absDays === 0 ? 'expired today' : `expired ${absDays} day${absDays > 1 ? 's' : ''} ago — in grace period`;
+        return { text: `${who} in grace period`, sub: when, color: s.text, dotColor: s.dot, badgeColor: s.badge, badgeLabel: s.label };
+    }
+    if (emp.complianceStatus === 'expiring_soon' || emp.complianceStatus === 'expiring') {
+        const s = getStatusConfig('expiring_soon');
         const others = emp.expiringCount - 1;
         const who = others > 0 ? `${urgentName} +${others} other${others > 1 ? 's' : ''}` : urgentName;
         const when = days === 0 ? 'today' : days === 1 ? '1 day left' : `${days} days left`;

@@ -688,8 +688,8 @@ func (h *DocumentHandler) Renew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Archive the old document by setting is_primary = false
-	_, err = tx.Exec(ctx, `UPDATE documents SET is_primary = FALSE WHERE id = $1`, oldID)
+	// Archive the old document: exclude from compliance aggregation and primary display
+	_, err = tx.Exec(ctx, `UPDATE documents SET is_primary = FALSE, is_mandatory = FALSE WHERE id = $1`, oldID)
 	if err != nil {
 		log.Printf("Error archiving old document: %v", err)
 	}

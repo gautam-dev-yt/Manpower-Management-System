@@ -63,6 +63,8 @@ func main() {
 	salaryHandler := handlers.NewSalaryHandler(db)
 	activityHandler := handlers.NewActivityHandler(db)
 	notificationHandler := handlers.NewNotificationHandler(db)
+	adminHandler := handlers.NewAdminHandler(db)
+	userMgmtHandler := handlers.NewUserManagementHandler(db)
 
 	// Start background cron jobs
 	cron.StartNotifier(db)
@@ -126,6 +128,9 @@ func main() {
 		r.Get("/api/salary/export", salaryHandler.Export)
 		r.Get("/api/documents/{id}", documentHandler.GetByID)
 
+		// Document types — read access for all authenticated users (needed for forms)
+		r.Get("/api/document-types", adminHandler.ListDocumentTypes)
+
 		// Write operations restricted to admin role
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireMinRole("admin"))
@@ -156,6 +161,20 @@ func main() {
 			r.Post("/api/salary/generate", salaryHandler.Generate)
 			r.Patch("/api/salary/bulk-status", salaryHandler.BulkUpdateStatus)
 			r.Patch("/api/salary/{id}/status", salaryHandler.UpdateStatus)
+
+			// User management (admin-only)
+			r.Get("/api/users", userMgmtHandler.List)
+			r.Put("/api/users/{id}/role", userMgmtHandler.UpdateRole)
+			r.Delete("/api/users/{id}", userMgmtHandler.Delete)
+
+			// Admin settings: document types (write operations)
+			r.Post("/api/admin/document-types", adminHandler.CreateDocumentType)
+			r.Put("/api/admin/document-types/{id}", adminHandler.UpdateDocumentType)
+			r.Delete("/api/admin/document-types/{id}", adminHandler.DeleteDocumentType)
+
+			// Admin settings: compliance rules
+			r.Get("/api/admin/compliance-rules", adminHandler.ListComplianceRules)
+			r.Put("/api/admin/compliance-rules", adminHandler.UpsertComplianceRules)
 		})
 	})
 

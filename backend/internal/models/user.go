@@ -13,12 +13,25 @@ type User struct {
 }
 
 // RegisterRequest contains the fields needed to create a new account.
-// Role is optional — defaults to "viewer" for safety.
+// All new users are registered as "viewer". Admin role is granted via User Management.
 type RegisterRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	Name     string `json:"name"`
-	Role     string `json:"role,omitempty"` // "admin" or "viewer" (default)
+}
+
+// UpdateRoleRequest is used by admins to change a user's role.
+type UpdateRoleRequest struct {
+	Role string `json:"role"`
+}
+
+// Validate checks that the role is one of the two allowed values.
+func (r *UpdateRoleRequest) Validate() map[string]string {
+	errors := map[string]string{}
+	if r.Role != "admin" && r.Role != "viewer" {
+		errors["role"] = "Role must be 'admin' or 'viewer'"
+	}
+	return errors
 }
 
 // Validate checks that all required registration fields are present.

@@ -147,8 +147,53 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Auto-create 7 mandatory document slots (incomplete — no file/expiry yet)
-	for _, md := range compliance.MandatoryDocs {
+	// 2. Auto-create mandatory document slots from DB (falls back to hardcoded if DB empty)
+	mandatoryRows, mandErr := tx.Query(ctx, `
+		SELECT dt.doc_type,
+		       COALESCE(cr.grace_period_days, gr.grace_period_days, 0),
+		       COALESCE(cr.fine_per_day, gr.fine_per_day, 0),
+		       COALESCE(cr.fine_type, gr.fine_type, 'daily'),
+		       COALESCE(cr.fine_cap, gr.fine_cap, 0)
+		FROM document_types dt
+		LEFT JOIN compliance_rules cr ON cr.doc_type = dt.doc_type AND cr.company_id = $1
+		LEFT JOIN compliance_rules gr ON gr.doc_type = dt.doc_type AND gr.company_id IS NULL
+		WHERE dt.is_active = TRUE
+		  AND COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE
+		ORDER BY dt.sort_order
+	`, req.CompanyID)
+
+	type mandatoryDoc struct {
+		DocType   string
+		GraceDays int
+		FinePerDay float64
+		FineType  string
+		FineCap   float64
+	}
+	var mandatoryDocs []mandatoryDoc
+
+	if mandErr == nil {
+		defer mandatoryRows.Close()
+		for mandatoryRows.Next() {
+			var md mandatoryDoc
+			if err := mandatoryRows.Scan(&md.DocType, &md.GraceDays, &md.FinePerDay, &md.FineType, &md.FineCap); err != nil {
+				log.Printf("Error scanning mandatory doc type: %v", err)
+				continue
+			}
+			mandatoryDocs = append(mandatoryDocs, md)
+		}
+	}
+
+	// Fallback: if DB tables are empty or query failed, use hardcoded defaults
+	if len(mandatoryDocs) == 0 {
+		for _, md := range compliance.MandatoryDocs {
+			mandatoryDocs = append(mandatoryDocs, mandatoryDoc{
+				DocType: md.DocType, GraceDays: md.GracePeriodDays,
+				FinePerDay: md.FinePerDay, FineType: md.FineType, FineCap: md.FineCap,
+			})
+		}
+	}
+
+	for _, md := range mandatoryDocs {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO documents (
 				employee_id, document_type,
@@ -158,12 +203,11 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 			)
 			VALUES ($1, $2, $3, $4, $5, $6, TRUE, FALSE, '', '', 0, '')
 		`, employee.ID, md.DocType,
-			md.GracePeriodDays, md.FinePerDay, md.FineType, md.FineCap,
+			md.GraceDays, md.FinePerDay, md.FineType, md.FineCap,
 		)
 		if err != nil {
 			log.Printf("Error creating mandatory doc slot %s for employee %s: %v",
 				md.DocType, employee.ID, err)
-			// Continue — non-fatal, can be fixed manually
 		}
 	}
 
@@ -261,13 +305,15 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
-	// Doc status filter — uses the primary document via LEFT JOIN
+	// Doc status filter — uses the compliance status from LATERAL subquery
 	var statusFilter string
 	switch docStatus {
 	case "expiring", "expiring_soon":
-		statusFilter = " AND ds.compliance_status = 'expiring'"
+		statusFilter = " AND ds.compliance_status = 'expiring_soon'"
 	case "expired", "penalty_active":
-		statusFilter = " AND ds.compliance_status = 'expired'"
+		statusFilter = " AND ds.compliance_status = 'penalty_active'"
+	case "in_grace":
+		statusFilter = " AND ds.compliance_status = 'in_grace'"
 	case "valid", "active":
 		statusFilter = " AND ds.compliance_status = 'valid'"
 	case "incomplete":
@@ -275,16 +321,24 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Count total for pagination
+	// Per-document status accounts for grace periods:
+	//   penalty_active = expired AND past grace period
+	//   in_grace       = expired but within grace period
+	//   expiring_soon  = within 30 days of expiry
+	//   valid          = all docs have expiry > 30 days
+	//   incomplete     = missing expiry_date or document_number
+	//   none           = no mandatory docs at all
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(*) FROM employees e
 		LEFT JOIN LATERAL (
 			SELECT
 				CASE
 					WHEN COUNT(*) = 0 THEN 'none'
-					WHEN MIN(expiry_date) < CURRENT_DATE THEN 'expired'
-					WHEN MIN(expiry_date) <= CURRENT_DATE + INTERVAL '30 days' THEN 'expiring'
-					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL) = COUNT(*) THEN 'valid'
-					ELSE 'incomplete'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NULL OR document_number IS NULL OR document_number = '') > 0 THEN 'incomplete'
+					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
+					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
+					WHEN COUNT(*) FILTER (WHERE expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
+					ELSE 'valid'
 				END AS compliance_status
 			FROM documents
 			WHERE employee_id = e.id AND is_mandatory = TRUE
@@ -317,20 +371,21 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 			SELECT
 				CASE
 					WHEN COUNT(*) = 0 THEN 'none'
-					WHEN MIN(expiry_date) < CURRENT_DATE THEN 'expired'
-					WHEN MIN(expiry_date) <= CURRENT_DATE + INTERVAL '30 days' THEN 'expiring'
-					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL) = COUNT(*) THEN 'valid'
-					ELSE 'incomplete'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NULL OR document_number IS NULL OR document_number = '') > 0 THEN 'incomplete'
+					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
+					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
+					WHEN COUNT(*) FILTER (WHERE expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
+					ELSE 'valid'
 				END AS compliance_status,
 				MIN(expiry_date) - CURRENT_DATE AS nearest_expiry_days,
-				COUNT(*) FILTER (WHERE expiry_date IS NOT NULL)::int AS docs_complete,
+				COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND document_number IS NOT NULL AND document_number != '')::int AS docs_complete,
 				COUNT(*)::int AS docs_total,
 				(SELECT document_type FROM documents
 				 WHERE employee_id = e.id AND is_mandatory = TRUE
 				   AND expiry_date IS NOT NULL
 				 ORDER BY expiry_date ASC LIMIT 1
 				) AS urgent_doc_type,
-				COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE)::int AS expired_count,
+				COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE)::int AS expired_count,
 				COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date >= CURRENT_DATE AND expiry_date <= CURRENT_DATE + INTERVAL '30 days')::int AS expiring_count
 			FROM documents
 			WHERE employee_id = e.id AND is_mandatory = TRUE
@@ -406,20 +461,21 @@ func (h *EmployeeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			SELECT
 				CASE
 					WHEN COUNT(*) = 0 THEN 'none'
-					WHEN MIN(expiry_date) < CURRENT_DATE THEN 'expired'
-					WHEN MIN(expiry_date) <= CURRENT_DATE + INTERVAL '30 days' THEN 'expiring'
-					WHEN COUNT(*) FILTER (WHERE expiry_date IS NOT NULL) = COUNT(*) THEN 'valid'
-					ELSE 'incomplete'
+					WHEN COUNT(*) FILTER (WHERE expiry_date IS NULL OR document_number IS NULL OR document_number = '') > 0 THEN 'incomplete'
+					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
+					WHEN COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
+					WHEN COUNT(*) FILTER (WHERE expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
+					ELSE 'valid'
 				END AS compliance_status,
 				MIN(expiry_date) - CURRENT_DATE AS nearest_expiry_days,
-				COUNT(*) FILTER (WHERE expiry_date IS NOT NULL)::int AS docs_complete,
+				COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND document_number IS NOT NULL AND document_number != '')::int AS docs_complete,
 				COUNT(*)::int AS docs_total,
 				(SELECT document_type FROM documents
 				 WHERE employee_id = e.id AND is_mandatory = TRUE
 				   AND expiry_date IS NOT NULL
 				 ORDER BY expiry_date ASC LIMIT 1
 				) AS urgent_doc_type,
-				COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE)::int AS expired_count,
+				COUNT(*) FILTER (WHERE expiry_date < CURRENT_DATE AND (expiry_date + grace_period_days * INTERVAL '1 day') < CURRENT_DATE)::int AS expired_count,
 				COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date >= CURRENT_DATE AND expiry_date <= CURRENT_DATE + INTERVAL '30 days')::int AS expiring_count
 			FROM documents
 			WHERE employee_id = e.id AND is_mandatory = TRUE

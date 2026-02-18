@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   Users, FileText, AlertTriangle, XCircle, Building2, Loader2, CheckCircle, TrendingUp,
-  DollarSign,
+  DollarSign, ClipboardCheck,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getStatusConfig, docDisplayName } from '@/lib/constants';
@@ -93,11 +93,19 @@ export default function DashboardPage() {
 
   const totalDocs = metrics.activeDocuments + metrics.expiringSoon + metrics.expired;
 
+  const completionPct = compliance?.completionRate ?? 0;
+  const completionAccent = completionPct >= 100
+    ? 'text-green-600 dark:text-green-400'
+    : completionPct >= 75
+      ? 'text-yellow-600 dark:text-yellow-400'
+      : 'text-red-600 dark:text-red-400';
+
   const metricCards = [
     { label: 'Total Employees', value: metrics.totalEmployees, sub: 'Active workforce', icon: Users, href: '/employees' },
     { label: 'Active Documents', value: metrics.activeDocuments, sub: 'Valid documents', icon: FileText, href: '/employees?status=active' },
     { label: 'Expiring Soon', value: metrics.expiringSoon, sub: 'Within 30 days', icon: AlertTriangle, accent: metrics.expiringSoon > 0 ? 'text-yellow-600 dark:text-yellow-400' : '', href: '/employees?status=expiring' },
     { label: 'Expired', value: metrics.expired, sub: 'Requires renewal', icon: XCircle, accent: metrics.expired > 0 ? 'text-red-600 dark:text-red-400' : '', href: '/employees?status=expired' },
+    { label: 'Completion Rate', value: `${Math.round(completionPct)}%`, sub: 'Documents fully tracked', icon: ClipboardCheck, accent: completionAccent, href: '/employees?status=incomplete' },
   ];
 
   return (
@@ -115,8 +123,8 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* Metric Cards — 4 cards, clean neutral style. Only warning/error states get color. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Metric Cards — 5 cards, clean neutral style. Only warning/error states get color. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {metricCards.map((card) => (
           <Link key={card.label} href={card.href}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer">
@@ -364,12 +372,26 @@ export default function DashboardPage() {
                           </div>
                         )}
                         <div className="text-center min-w-[48px]">
-                          <div className={`text-lg font-bold ${alert.daysLeft < 0 ? 'text-red-600' : alert.daysLeft <= 7 ? 'text-orange-600' : 'text-yellow-600'}`}>
-                            {Math.abs(alert.daysLeft)}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground">
-                            {alert.daysLeft < 0 ? 'days late' : 'days left'}
-                          </div>
+                          {alert.status === 'in_grace' && alert.graceDaysRemaining != null ? (
+                            <>
+                              <div className="text-lg font-bold text-orange-600">{alert.graceDaysRemaining}</div>
+                              <div className="text-[11px] text-muted-foreground">grace left</div>
+                            </>
+                          ) : alert.status === 'penalty_active' && alert.daysInPenalty != null ? (
+                            <>
+                              <div className="text-lg font-bold text-red-600">{alert.daysInPenalty}</div>
+                              <div className="text-[11px] text-muted-foreground">in penalty</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className={`text-lg font-bold ${alert.daysLeft < 0 ? 'text-red-600' : alert.daysLeft <= 7 ? 'text-orange-600' : 'text-yellow-600'}`}>
+                                {Math.abs(alert.daysLeft)}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {alert.daysLeft < 0 ? 'days late' : 'days left'}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>

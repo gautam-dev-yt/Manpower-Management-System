@@ -37,16 +37,18 @@ type CompanySummary struct {
 
 // ExpiryAlert represents a document nearing/past expiry.
 type ExpiryAlert struct {
-	DocumentID    string  `json:"documentId"`
-	EmployeeID    string  `json:"employeeId"`
-	EmployeeName  string  `json:"employeeName"`
-	CompanyName   string  `json:"companyName"`
-	DocumentType  string  `json:"documentType"`
-	ExpiryDate    string  `json:"expiryDate"`
-	DaysLeft      int     `json:"daysLeft"`
-	Status        string  `json:"status"`        // "expired", "urgent", "warning", "in_grace", "penalty_active"
-	EstimatedFine float64 `json:"estimatedFine"` // current fine for this document
-	FinePerDay    float64 `json:"finePerDay"`    // daily rate
+	DocumentID         string  `json:"documentId"`
+	EmployeeID         string  `json:"employeeId"`
+	EmployeeName       string  `json:"employeeName"`
+	CompanyName        string  `json:"companyName"`
+	DocumentType       string  `json:"documentType"`
+	ExpiryDate         string  `json:"expiryDate"`
+	DaysLeft           int     `json:"daysLeft"`
+	Status             string  `json:"status"`               // "expiring_soon", "in_grace", "penalty_active"
+	EstimatedFine      float64 `json:"estimatedFine"`        // current fine for this document
+	FinePerDay         float64 `json:"finePerDay"`           // daily rate
+	GraceDaysRemaining *int    `json:"graceDaysRemaining"`   // only set when status == "in_grace"
+	DaysInPenalty      *int    `json:"daysInPenalty"`         // only set when status == "penalty_active"
 }
 
 // ── Compliance Stats (new dashboard) ─────────────────────────────
