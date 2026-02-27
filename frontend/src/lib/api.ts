@@ -268,6 +268,8 @@ export const api = {
                 method: 'POST',
                 body: JSON.stringify(data),
             }),
+        download: (id: string, filename: string = 'document') =>
+            downloadFile(`/api/documents/${id}/download`, filename),
     },
 
     // ── Salary ────────────────────────────────────────────────

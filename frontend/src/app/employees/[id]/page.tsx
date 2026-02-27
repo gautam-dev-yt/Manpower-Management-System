@@ -17,7 +17,7 @@ import {
 import {
     ArrowLeft, Pencil, Trash2, Phone, Building2, Calendar,
     Briefcase, FileText, Plus, Loader2, Star, RefreshCw,
-    DollarSign, MapPin, Globe, User, MoreHorizontal, AlertTriangle, ExternalLink,
+    DollarSign, MapPin, Globe, User, MoreHorizontal, AlertTriangle, ExternalLink, Download,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getStatusConfig, docDisplayName, EMP_STATUS_COLORS } from '@/lib/constants';
@@ -555,6 +555,18 @@ export default function EmployeeDetailPage() {
                                                             </Button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end">
+                                                            {doc.fileUrl && (
+                                                                <DropdownMenuItem onClick={async () => {
+                                                                    try {
+                                                                        await api.documents.download(doc.id, doc.fileName || docName || 'document');
+                                                                    } catch {
+                                                                        toast.error('Download failed');
+                                                                    }
+                                                                }}>
+                                                                    <Download className="h-3.5 w-3.5 mr-2" />
+                                                                    Download
+                                                                </DropdownMenuItem>
+                                                            )}
                                                             {hasExpiry && (
                                                                 <DropdownMenuItem onClick={async () => {
                                                                     try {

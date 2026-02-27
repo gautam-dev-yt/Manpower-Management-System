@@ -157,6 +157,7 @@ func main() {
 		r.Get("/api/salary/summary", salaryHandler.Summary)
 		r.Get("/api/salary/export", salaryHandler.Export)
 		r.Get("/api/documents/{id}", documentHandler.GetByID)
+		r.Get("/api/documents/{id}/download", documentHandler.Download)
 
 		// Document types (read — needed for forms)
 		r.Get("/api/document-types", adminHandler.ListDocumentTypes)

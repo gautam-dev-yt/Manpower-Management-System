@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -433,6 +437,83 @@ func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			"companyName":  companyName,
 		},
 	})
+}
+
+// Download handles GET /api/documents/{id}/download — serves the file with Content-Disposition: attachment.
+func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		JSONError(w, http.StatusBadRequest, "Document ID is required")
+		return
+	}
+
+	if !checkDocumentAccess(r.Context(), h.db.GetPool(), id) {
+		JSONError(w, http.StatusForbidden, "Access denied to this document")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	var fileURL, fileName, fileType string
+	err := h.db.GetPool().QueryRow(ctx,
+		`SELECT file_url, COALESCE(file_name, ''), COALESCE(file_type, 'application/octet-stream') FROM documents WHERE id = $1`,
+		id,
+	).Scan(&fileURL, &fileName, &fileType)
+	if err != nil {
+		log.Printf("Error fetching document %s for download: %v", id, err)
+		JSONError(w, http.StatusNotFound, "Document not found")
+		return
+	}
+	if fileURL == "" {
+		JSONError(w, http.StatusNotFound, "No file attached to this document")
+		return
+	}
+
+	disposition := "attachment"
+	if fileName != "" {
+		disposition = fmt.Sprintf("attachment; filename=%q", fileName)
+	}
+	w.Header().Set("Content-Disposition", disposition)
+	w.Header().Set("Content-Type", fileType)
+
+	// Local storage: fileUrl is like "http://host/api/files/documents/123_file.pdf" — serve from uploads dir
+	if idx := strings.Index(fileURL, "/api/files/"); idx >= 0 {
+		pathAfter := strings.TrimPrefix(fileURL[idx:], "/api/files/")
+		pathAfter = strings.TrimPrefix(pathAfter, "/")
+		if pathAfter == "" || strings.Contains(pathAfter, "..") {
+			JSONError(w, http.StatusBadRequest, "Invalid file path")
+			return
+		}
+		uploadDir := os.Getenv("UPLOAD_DIR")
+		if uploadDir == "" {
+			uploadDir = "./uploads"
+		}
+		localPath := filepath.Join(uploadDir, filepath.Clean(filepath.FromSlash(pathAfter)))
+		f, err := os.Open(localPath)
+		if err != nil {
+			log.Printf("Error opening file %s: %v", localPath, err)
+			JSONError(w, http.StatusNotFound, "File not found")
+			return
+		}
+		defer f.Close()
+		io.Copy(w, f)
+		return
+	}
+
+	// External URL (e.g. R2): proxy and stream with attachment
+	resp, err := http.Get(fileURL)
+	if err != nil {
+		log.Printf("Error fetching external file %s: %v", fileURL, err)
+		JSONError(w, http.StatusBadGateway, "Failed to fetch file")
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		JSONError(w, http.StatusBadGateway, "Failed to fetch file")
+		return
+	}
+	io.Copy(w, resp.Body)
 }
 
 // ── Update ───────────────────────────────────────────────────────
