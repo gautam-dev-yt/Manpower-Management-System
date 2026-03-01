@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   Users, FileText, AlertTriangle, XCircle, Building2, Loader2, CheckCircle, TrendingUp,
-  DollarSign, ClipboardCheck,
+  DollarSign, Clock,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getStatusConfig, docDisplayName } from '@/lib/constants';
@@ -20,7 +20,7 @@ import {
 const CHART_COLORS = {
   valid: '#22c55e',
   expiring: '#eab308',
-  expired: '#ef4444',
+  inPenalty: '#ef4444',
   bar: '#6366f1',
 };
 
@@ -84,29 +84,24 @@ export default function DashboardPage() {
 
   if (!metrics) return null;
 
+  const inGraceCount = compliance?.documentsByStatus?.in_grace ?? 0;
+
   // Build chart data from metrics
   const donutData = [
     { name: 'Valid', value: metrics.activeDocuments, color: CHART_COLORS.valid },
     { name: 'Expiring', value: metrics.expiringSoon, color: CHART_COLORS.expiring },
-    { name: 'Expired', value: metrics.expired, color: CHART_COLORS.expired },
+    { name: 'In penalty', value: metrics.expired, color: CHART_COLORS.inPenalty },
   ].filter((d) => d.value > 0);
 
   const totalDocs = metrics.activeDocuments + metrics.expiringSoon + metrics.expired;
-
-  const completionPct = compliance?.completionRate ?? 0;
-  const completionAccent = completionPct >= 100
-    ? 'text-green-600 dark:text-green-400'
-    : completionPct >= 75
-      ? 'text-yellow-600 dark:text-yellow-400'
-      : 'text-red-600 dark:text-red-400';
 
   const metricCards = [
     { label: 'Total Employees', value: metrics.totalEmployees, sub: 'Active workforce', icon: Users, href: '/employees' },
     // status=active is normalized to "valid" on employees page so the doc-status dropdown shows "Valid" (same filter)
     { label: 'Active Documents', value: metrics.activeDocuments, sub: 'Valid documents', icon: FileText, href: '/employees?status=active' },
     { label: 'Expiring Soon', value: metrics.expiringSoon, sub: 'Within 30 days', icon: AlertTriangle, accent: metrics.expiringSoon > 0 ? 'text-yellow-600 dark:text-yellow-400' : '', href: '/employees?status=expiring' },
-    { label: 'Expired', value: metrics.expired, sub: 'Requires renewal', icon: XCircle, accent: metrics.expired > 0 ? 'text-red-600 dark:text-red-400' : '', href: '/employees?status=expired' },
-    { label: 'Completion Rate', value: `${Math.round(completionPct)}%`, sub: 'Documents fully tracked', icon: ClipboardCheck, accent: completionAccent, href: '/employees?status=incomplete' },
+    { label: 'In penalty', value: metrics.expired, sub: 'Past grace — fines may apply', icon: XCircle, accent: metrics.expired > 0 ? 'text-red-600 dark:text-red-400' : '', href: '/employees?status=expired' },
+    { label: 'In Grace', value: inGraceCount, sub: 'Renew before fines', icon: Clock, accent: inGraceCount > 0 ? 'text-orange-600 dark:text-orange-400' : '', href: '/employees?status=in_grace' },
   ];
 
   return (
@@ -236,31 +231,44 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {companies.length > 0 ? (
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={companies} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 12, fill: 'var(--color-muted-foreground)' }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 12, fill: 'var(--color-muted-foreground)' }}
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'var(--color-card)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                    }}
-                  />
-                  <Bar dataKey="employeeCount" fill={CHART_COLORS.bar} radius={[6, 6, 0, 0]} name="Employees" />
-                </BarChart>
-              </ResponsiveContainer>
+              <>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={companies} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 12, fill: 'var(--color-muted-foreground)' }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 12, fill: 'var(--color-muted-foreground)' }}
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--color-card)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                      }}
+                    />
+                    <Bar dataKey="employeeCount" fill={CHART_COLORS.bar} radius={[6, 6, 0, 0]} name="Employees" />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-border">
+                  {companies.map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/companies/${c.id}`}
+                      className="text-sm text-muted-foreground hover:text-primary hover:underline"
+                    >
+                      {c.name}
+                    </Link>
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="flex items-center justify-center py-8 text-muted-foreground">
                 <Building2 className="h-5 w-5 mr-2" /> No companies yet
@@ -295,7 +303,11 @@ export default function DashboardPage() {
                 <tbody className="divide-y divide-border">
                   {compliance.companyBreakdown.map((co) => (
                     <tr key={co.companyId} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-6 py-2.5 font-medium text-foreground">{co.companyName}</td>
+                      <td className="px-6 py-2.5 font-medium text-foreground">
+                        <Link href={`/companies/${co.companyId}`} className="hover:text-primary hover:underline">
+                          {co.companyName}
+                        </Link>
+                      </td>
                       <td className="text-center px-3 py-2.5">{co.employeeCount}</td>
                       <td className="text-center px-3 py-2.5">
                         {co.penaltyCount > 0

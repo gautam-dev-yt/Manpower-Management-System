@@ -331,6 +331,56 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 		stats.CompletionRate = float64(totalComplete) / float64(stats.TotalDocuments) * 100
 	}
 
+	// Per-company daily exposure and accumulated fines: query all mandatory docs in penalty,
+	// then aggregate in Go using the compliance engine.
+	type companyFines struct {
+		dailyExposure float64
+		accumulated   float64
+	}
+	companyFinesMap := make(map[string]*companyFines)
+
+	penaltyRows, err := pool.Query(ctx, fmt.Sprintf(`
+		SELECT e.company_id,
+			d.expiry_date::text,
+			COALESCE(cr.grace_period_days, gr.grace_period_days, 0) AS grace_period_days,
+			COALESCE(cr.fine_per_day, gr.fine_per_day, 0) AS fine_per_day,
+			COALESCE(cr.fine_type, gr.fine_type, 'daily') AS fine_type,
+			COALESCE(cr.fine_cap, gr.fine_cap, 0) AS fine_cap
+		FROM documents d
+		JOIN employees e ON d.employee_id = e.id
+		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
+		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
+		LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
+		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE
+		  AND d.expiry_date IS NOT NULL
+		  AND e.exit_type IS NULL
+		  AND (d.expiry_date + COALESCE(cr.grace_period_days, gr.grace_period_days, 0) * INTERVAL '1 day') < CURRENT_DATE%s
+	`, scopeFilter), scopeArgs...)
+	if err == nil {
+		defer penaltyRows.Close()
+		for penaltyRows.Next() {
+			var companyID, expiryRaw string
+			var graceDays int
+			var finePerDay, fineCap float64
+			var fineType string
+			if err := penaltyRows.Scan(&companyID, &expiryRaw, &graceDays, &finePerDay, &fineType, &fineCap); err != nil {
+				continue
+			}
+			expiryTime, err := time.Parse("2006-01-02", expiryRaw)
+			if err != nil {
+				continue
+			}
+			fine := compliance.ComputeFine(expiryTime, graceDays, finePerDay, fineType, fineCap, now)
+			if companyFinesMap[companyID] == nil {
+				companyFinesMap[companyID] = &companyFines{}
+			}
+			companyFinesMap[companyID].accumulated += fine
+			if fineType == compliance.FineTypeDaily {
+				companyFinesMap[companyID].dailyExposure += finePerDay
+			}
+		}
+	}
+
 	companyScopeF, companyScopeA := companyScopeClause(ctx, 1, "c.id")
 	var compScopeArgs []interface{}
 	if companyScopeA != nil {
@@ -366,6 +416,10 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 				&cc.PenaltyCount, &cc.IncompleteCount,
 			); err != nil {
 				continue
+			}
+			if cf := companyFinesMap[cc.CompanyID]; cf != nil {
+				cc.DailyExposure = cf.dailyExposure
+				cc.AccumulatedFines = cf.accumulated
 			}
 			stats.CompanyBreakdown = append(stats.CompanyBreakdown, cc)
 		}
