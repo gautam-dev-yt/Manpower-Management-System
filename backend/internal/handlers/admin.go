@@ -113,6 +113,10 @@ func (h *AdminHandler) CreateDocumentType(w http.ResponseWriter, r *http.Request
 	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
 
 	var dt models.DocumentType
+	isMandatory := false
+	if req.IsMandatory != nil {
+		isMandatory = *req.IsMandatory
+	}
 	err := pool.QueryRow(ctx, `
 		INSERT INTO document_types (doc_type, display_name, is_mandatory, has_expiry,
 		    number_label, number_placeholder, expiry_label, sort_order, metadata_fields,
@@ -121,11 +125,11 @@ func (h *AdminHandler) CreateDocumentType(w http.ResponseWriter, r *http.Request
 		    show_issue_date, require_issue_date,
 		    show_expiry_date, require_expiry_date,
 		    show_file, require_file)
-		VALUES ($1, $2, FALSE, $3, $4, $5, $6, $7, $8, FALSE, TRUE,
-		    COALESCE($9, TRUE), COALESCE($10, FALSE),
-		    COALESCE($11, TRUE), COALESCE($12, FALSE),
-		    COALESCE($13, TRUE), COALESCE($14, FALSE),
-		    COALESCE($15, TRUE), COALESCE($16, FALSE))
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, TRUE,
+		    COALESCE($10, TRUE), COALESCE($11, FALSE),
+		    COALESCE($12, TRUE), COALESCE($13, FALSE),
+		    COALESCE($14, TRUE), COALESCE($15, FALSE),
+		    COALESCE($16, TRUE), COALESCE($17, FALSE))
 		RETURNING id, doc_type, display_name, is_mandatory, has_expiry,
 		          number_label, number_placeholder, expiry_label, sort_order,
 		          metadata_fields, is_system, is_active,
@@ -134,7 +138,7 @@ func (h *AdminHandler) CreateDocumentType(w http.ResponseWriter, r *http.Request
 		          show_expiry_date, require_expiry_date,
 		          show_file, require_file,
 		          created_at::text, updated_at::text
-	`, req.DocType, req.DisplayName, req.HasExpiry,
+	`, req.DocType, req.DisplayName, isMandatory, req.HasExpiry,
 		req.NumberLabel, req.NumberPlaceholder, req.ExpiryLabel,
 		req.SortOrder, req.MetadataFields,
 		req.ShowDocumentNumber, req.RequireDocumentNumber,
@@ -206,21 +210,22 @@ func (h *AdminHandler) UpdateDocumentType(w http.ResponseWriter, r *http.Request
 	err = pool.QueryRow(ctx, `
 		UPDATE document_types SET
 			display_name       = COALESCE($1, display_name),
-			number_label       = COALESCE($2, number_label),
-			number_placeholder = COALESCE($3, number_placeholder),
-			expiry_label       = COALESCE($4, expiry_label),
-			sort_order         = COALESCE($5, sort_order),
-			metadata_fields    = COALESCE($6, metadata_fields),
-			show_document_number    = COALESCE($8, show_document_number),
-			require_document_number = COALESCE($9, require_document_number),
-			show_issue_date         = COALESCE($10, show_issue_date),
-			require_issue_date      = COALESCE($11, require_issue_date),
-			show_expiry_date        = COALESCE($12, show_expiry_date),
-			require_expiry_date     = COALESCE($13, require_expiry_date),
-			show_file               = COALESCE($14, show_file),
-			require_file            = COALESCE($15, require_file),
+			is_mandatory       = COALESCE($2, is_mandatory),
+			number_label       = COALESCE($3, number_label),
+			number_placeholder = COALESCE($4, number_placeholder),
+			expiry_label       = COALESCE($5, expiry_label),
+			sort_order         = COALESCE($6, sort_order),
+			metadata_fields    = COALESCE($7, metadata_fields),
+			show_document_number    = COALESCE($9, show_document_number),
+			require_document_number = COALESCE($10, require_document_number),
+			show_issue_date         = COALESCE($11, show_issue_date),
+			require_issue_date      = COALESCE($12, require_issue_date),
+			show_expiry_date        = COALESCE($13, show_expiry_date),
+			require_expiry_date     = COALESCE($14, require_expiry_date),
+			show_file               = COALESCE($15, show_file),
+			require_file            = COALESCE($16, require_file),
 			updated_at         = NOW()
-		WHERE id = $7
+		WHERE id = $8
 		RETURNING id, doc_type, display_name, is_mandatory, has_expiry,
 		          number_label, number_placeholder, expiry_label, sort_order,
 		          metadata_fields, is_system, is_active,
@@ -229,7 +234,7 @@ func (h *AdminHandler) UpdateDocumentType(w http.ResponseWriter, r *http.Request
 		          show_expiry_date, require_expiry_date,
 		          show_file, require_file,
 		          created_at::text, updated_at::text
-	`, req.DisplayName, req.NumberLabel, req.NumberPlaceholder,
+	`, req.DisplayName, req.IsMandatory, req.NumberLabel, req.NumberPlaceholder,
 		req.ExpiryLabel, req.SortOrder, req.MetadataFields, id,
 		req.ShowDocumentNumber, req.RequireDocumentNumber,
 		req.ShowIssueDate, req.RequireIssueDate,

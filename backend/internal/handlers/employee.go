@@ -305,8 +305,9 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 	const existsValidDoc = ` AND EXISTS (
 		SELECT 1 FROM documents d2
 		LEFT JOIN document_types dt2 ON dt2.doc_type = d2.document_type AND dt2.is_active = TRUE
+		LEFT JOIN compliance_rules cr2 ON cr2.doc_type = d2.document_type AND cr2.company_id = e.company_id
 		WHERE d2.employee_id = e.id
-		  AND COALESCE(dt2.is_mandatory, FALSE) = TRUE
+		  AND COALESCE(cr2.is_mandatory, dt2.is_mandatory) = TRUE
 		  AND d2.expiry_date IS NOT NULL
 		  AND d2.expiry_date > CURRENT_DATE + INTERVAL '30 days'
 	)`
@@ -348,7 +349,7 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN document_types dt2 ON dt2.doc_type = d2.document_type AND dt2.is_active = TRUE
 			LEFT JOIN compliance_rules cr2 ON cr2.doc_type = d2.document_type AND cr2.company_id = e.company_id
 			LEFT JOIN compliance_rules gr2 ON gr2.doc_type = d2.document_type AND gr2.company_id IS NULL
-			WHERE d2.employee_id = e.id AND COALESCE(dt2.is_mandatory, FALSE) = TRUE
+			WHERE d2.employee_id = e.id AND COALESCE(cr2.is_mandatory, dt2.is_mandatory) = TRUE
 		) ds ON TRUE
 		%s %s
 	`, where, statusFilter)
@@ -389,7 +390,8 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 				COUNT(*)::int AS docs_total,
 				(SELECT dd.document_type FROM documents dd
 				 LEFT JOIN document_types ddt ON ddt.doc_type = dd.document_type AND ddt.is_active = TRUE
-				 WHERE dd.employee_id = e.id AND COALESCE(ddt.is_mandatory, FALSE) = TRUE
+				 LEFT JOIN compliance_rules crd ON crd.doc_type = dd.document_type AND crd.company_id = e.company_id
+				 WHERE dd.employee_id = e.id AND COALESCE(crd.is_mandatory, ddt.is_mandatory) = TRUE
 				   AND dd.expiry_date IS NOT NULL
 				 ORDER BY dd.expiry_date ASC LIMIT 1
 				) AS urgent_doc_type,
@@ -399,7 +401,7 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN document_types dt2 ON dt2.doc_type = d2.document_type AND dt2.is_active = TRUE
 			LEFT JOIN compliance_rules cr2 ON cr2.doc_type = d2.document_type AND cr2.company_id = e.company_id
 			LEFT JOIN compliance_rules gr2 ON gr2.doc_type = d2.document_type AND gr2.company_id IS NULL
-			WHERE d2.employee_id = e.id AND COALESCE(dt2.is_mandatory, FALSE) = TRUE
+			WHERE d2.employee_id = e.id AND COALESCE(cr2.is_mandatory, dt2.is_mandatory) = TRUE
 		) ds ON TRUE
 		%s %s
 		ORDER BY %s %s
@@ -483,7 +485,8 @@ func (h *EmployeeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 				COUNT(*)::int AS docs_total,
 				(SELECT dd.document_type FROM documents dd
 				 LEFT JOIN document_types ddt ON ddt.doc_type = dd.document_type AND ddt.is_active = TRUE
-				 WHERE dd.employee_id = e.id AND COALESCE(ddt.is_mandatory, FALSE) = TRUE
+				 LEFT JOIN compliance_rules crd ON crd.doc_type = dd.document_type AND crd.company_id = e.company_id
+				 WHERE dd.employee_id = e.id AND COALESCE(crd.is_mandatory, ddt.is_mandatory) = TRUE
 				   AND dd.expiry_date IS NOT NULL
 				 ORDER BY dd.expiry_date ASC LIMIT 1
 				) AS urgent_doc_type,
@@ -493,7 +496,7 @@ func (h *EmployeeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN document_types dt2 ON dt2.doc_type = d2.document_type AND dt2.is_active = TRUE
 			LEFT JOIN compliance_rules cr2 ON cr2.doc_type = d2.document_type AND cr2.company_id = e.company_id
 			LEFT JOIN compliance_rules gr2 ON gr2.doc_type = d2.document_type AND gr2.company_id IS NULL
-			WHERE d2.employee_id = e.id AND COALESCE(dt2.is_mandatory, FALSE) = TRUE
+			WHERE d2.employee_id = e.id AND COALESCE(cr2.is_mandatory, dt2.is_mandatory) = TRUE
 		) ds ON TRUE
 		WHERE e.id = $1
 	`, employeeCols), id,

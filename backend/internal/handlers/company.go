@@ -72,7 +72,7 @@ func (h *CompanyHandler) List(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
 			LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = c.id
 			LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
-			WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE
+			WHERE COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE
 		) comp ON TRUE
 		%s
 		GROUP BY c.id, c.name, c.currency,
@@ -173,7 +173,8 @@ func (h *CompanyHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 				END AS compliance_status,
 				(SELECT dd.document_type FROM documents dd
 				 LEFT JOIN document_types ddt ON ddt.doc_type = dd.document_type AND ddt.is_active = TRUE
-				 WHERE dd.employee_id = e.id AND COALESCE(ddt.is_mandatory, FALSE) = TRUE
+				 LEFT JOIN compliance_rules crd ON crd.doc_type = dd.document_type AND crd.company_id = e.company_id
+				 WHERE dd.employee_id = e.id AND COALESCE(crd.is_mandatory, ddt.is_mandatory) = TRUE
 				   AND dd.expiry_date IS NOT NULL
 				 ORDER BY dd.expiry_date ASC LIMIT 1
 				) AS urgent_doc_type
@@ -181,7 +182,7 @@ func (h *CompanyHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN document_types dt2 ON dt2.doc_type = d2.document_type AND dt2.is_active = TRUE
 			LEFT JOIN compliance_rules cr2 ON cr2.doc_type = d2.document_type AND cr2.company_id = e.company_id
 			LEFT JOIN compliance_rules gr2 ON gr2.doc_type = d2.document_type AND gr2.company_id IS NULL
-			WHERE d2.employee_id = e.id AND COALESCE(dt2.is_mandatory, FALSE) = TRUE
+			WHERE d2.employee_id = e.id AND COALESCE(cr2.is_mandatory, dt2.is_mandatory) = TRUE
 		) ds ON TRUE
 		WHERE e.company_id = $1 AND e.exit_type IS NULL
 		ORDER BY

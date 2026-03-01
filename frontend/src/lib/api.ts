@@ -353,7 +353,7 @@ export const api = {
     documentTypes: {
         list: () => fetcher<{ data: AdminDocumentType[] }>('/api/document-types'),
         create: (data: {
-            docType: string; displayName: string; hasExpiry?: boolean;
+            docType: string; displayName: string; isMandatory?: boolean; hasExpiry?: boolean;
             numberLabel?: string; numberPlaceholder?: string; expiryLabel?: string;
             sortOrder?: number; metadataFields?: unknown[];
             showDocumentNumber?: boolean; requireDocumentNumber?: boolean;

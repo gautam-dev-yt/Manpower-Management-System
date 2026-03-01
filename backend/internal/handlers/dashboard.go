@@ -55,7 +55,8 @@ func (h *DashboardHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		SELECT COUNT(*) FROM documents d
 		JOIN employees e ON d.employee_id = e.id
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
-		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE AND d.expiry_date IS NOT NULL
+		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
+		WHERE COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE AND d.expiry_date IS NOT NULL
 		  AND d.expiry_date > CURRENT_DATE + INTERVAL '30 days'
 		  AND e.exit_type IS NULL%s
 	`, scopeFilter), scopeArgs...).Scan(&metrics.ActiveDocuments)
@@ -69,7 +70,8 @@ func (h *DashboardHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		SELECT COUNT(*) FROM documents d
 		JOIN employees e ON d.employee_id = e.id
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
-		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE AND d.expiry_date IS NOT NULL
+		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
+		WHERE COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE AND d.expiry_date IS NOT NULL
 		  AND d.expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
 		  AND e.exit_type IS NULL%s
 	`, scopeFilter), scopeArgs...).Scan(&metrics.ExpiringSoon)
@@ -85,7 +87,7 @@ func (h *DashboardHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
 		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
 		LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
-		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE AND d.expiry_date IS NOT NULL
+		WHERE COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE AND d.expiry_date IS NOT NULL
 		  AND d.expiry_date < CURRENT_DATE
 		  AND (d.expiry_date + COALESCE(cr.grace_period_days, gr.grace_period_days, 0) * INTERVAL '1 day') < CURRENT_DATE
 		  AND e.exit_type IS NULL%s
@@ -102,7 +104,7 @@ func (h *DashboardHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
 		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
 		LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
-		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE AND d.expiry_date IS NOT NULL
+		WHERE COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE AND d.expiry_date IS NOT NULL
 		  AND d.expiry_date < CURRENT_DATE
 		  AND (d.expiry_date + COALESCE(cr.grace_period_days, gr.grace_period_days, 0) * INTERVAL '1 day') >= CURRENT_DATE
 		  AND e.exit_type IS NULL%s
@@ -147,7 +149,7 @@ func (h *DashboardHandler) GetExpiryAlerts(w http.ResponseWriter, r *http.Reques
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
 		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
 		LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
-		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE AND d.expiry_date IS NOT NULL
+		WHERE COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE AND d.expiry_date IS NOT NULL
 		  AND d.expiry_date <= CURRENT_DATE + INTERVAL '30 days'
 		  AND e.exit_type IS NULL%s
 		ORDER BY d.expiry_date ASC
@@ -278,7 +280,8 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 		SELECT COUNT(*) FROM documents d
 		JOIN employees e ON d.employee_id = e.id
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
-		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE%s
+		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
+		WHERE COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE%s
 	`, scopeFilter), scopeArgs...).Scan(&stats.TotalDocuments)
 
 	rows, err := pool.Query(ctx, fmt.Sprintf(`
@@ -293,7 +296,7 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
 		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
 		LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
-		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE AND e.exit_type IS NULL%s
+		WHERE COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE AND e.exit_type IS NULL%s
 	`, scopeFilter), scopeArgs...)
 	if err != nil {
 		log.Printf("Error fetching compliance stats: %v", err)
@@ -368,7 +371,7 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
 		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
 		LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
-		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE
+		WHERE COALESCE(cr.is_mandatory, dt.is_mandatory) = TRUE
 		  AND d.expiry_date IS NOT NULL
 		  AND e.exit_type IS NULL
 		  AND (d.expiry_date + COALESCE(cr.grace_period_days, gr.grace_period_days, 0) * INTERVAL '1 day') < CURRENT_DATE%s
@@ -425,7 +428,7 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
 		LEFT JOIN compliance_rules cr2 ON cr2.doc_type = d.document_type AND cr2.company_id = c.id
 		LEFT JOIN compliance_rules gr2 ON gr2.doc_type = d.document_type AND gr2.company_id IS NULL
-		WHERE (COALESCE(dt.is_mandatory, FALSE) = TRUE OR d.id IS NULL)%s
+		WHERE (COALESCE(cr2.is_mandatory, dt.is_mandatory) = TRUE OR d.id IS NULL)%s
 		GROUP BY c.id, c.name
 		ORDER BY penalty_count DESC, grace_count DESC
 	`, companyScopeF), compScopeArgs...)
@@ -495,6 +498,19 @@ func (h *DashboardHandler) GetDependencyAlerts(w http.ResponseWriter, r *http.Re
 		deps = append(deps, d)
 	}
 
+	// Display names from document_types for alert messages (fallback to compliance package)
+	displayNameMap := make(map[string]string)
+	typeRows, _ := pool.Query(ctx, `SELECT doc_type, display_name FROM document_types WHERE is_active = TRUE`)
+	if typeRows != nil {
+		defer typeRows.Close()
+		for typeRows.Next() {
+			var slug, name string
+			if typeRows.Scan(&slug, &name) == nil && name != "" {
+				displayNameMap[slug] = name
+			}
+		}
+	}
+
 	docRows, err := pool.Query(ctx, `
 		SELECT d.document_type, COALESCE(d.expiry_date::text, ''), d.document_number
 		FROM documents d
@@ -548,14 +564,18 @@ func (h *DashboardHandler) GetDependencyAlerts(w http.ResponseWriter, r *http.Re
 			BlockedExpiry:  blockedExpiry,
 		}
 
+		blockingName := displayNameMap[d.Blocking]
+		if blockingName == "" {
+			blockingName = compliance.DisplayName(d.Blocking)
+		}
 		if daysUntilBlockingExpiry < 0 {
 			alert.Severity = "critical"
-			alert.Message = fmt.Sprintf("%s has EXPIRED — %s", compliance.DisplayName(d.Blocking), d.Description)
+			alert.Message = fmt.Sprintf("%s has EXPIRED — %s", blockingName, d.Description)
 			alerts = append(alerts, alert)
 		} else if daysUntilBlockingExpiry <= 30 {
 			alert.Severity = "warning"
 			alert.Message = fmt.Sprintf("%s expires in %d days — %s",
-				compliance.DisplayName(d.Blocking), daysUntilBlockingExpiry, d.Description)
+				blockingName, daysUntilBlockingExpiry, d.Description)
 			alerts = append(alerts, alert)
 		}
 	}

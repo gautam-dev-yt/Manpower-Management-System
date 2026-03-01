@@ -37,6 +37,7 @@ type DocumentType struct {
 type CreateDocumentTypeRequest struct {
 	DocType           string          `json:"docType"`
 	DisplayName       string          `json:"displayName"`
+	IsMandatory       *bool           `json:"isMandatory,omitempty"`
 	HasExpiry         bool            `json:"hasExpiry"`
 	NumberLabel       string          `json:"numberLabel"`
 	NumberPlaceholder string          `json:"numberPlaceholder"`
@@ -69,6 +70,7 @@ func (r *CreateDocumentTypeRequest) Validate() map[string]string {
 // UpdateDocumentTypeRequest is used to edit an existing document type.
 type UpdateDocumentTypeRequest struct {
 	DisplayName       *string          `json:"displayName,omitempty"`
+	IsMandatory       *bool            `json:"isMandatory,omitempty"`
 	NumberLabel       *string          `json:"numberLabel,omitempty"`
 	NumberPlaceholder *string          `json:"numberPlaceholder,omitempty"`
 	ExpiryLabel       *string          `json:"expiryLabel,omitempty"`

@@ -519,6 +519,7 @@ function DocumentTypeForm({
 
     const [displayName, setDisplayName] = useState(initial?.displayName ?? '');
     const [docType, setDocType] = useState(initial?.docType ?? '');
+    const [isMandatory, setIsMandatory] = useState(initial?.isMandatory ?? false);
     const [numberLabel, setNumberLabel] = useState(initial?.numberLabel ?? 'Document Number');
     const [numberPlaceholder, setNumberPlaceholder] = useState(initial?.numberPlaceholder ?? '');
     const [expiryLabel, setExpiryLabel] = useState(initial?.expiryLabel ?? 'Expiry Date');
@@ -553,6 +554,7 @@ function DocumentTypeForm({
             if (isEditing && initial) {
                 await api.documentTypes.update(initial.id, {
                     displayName,
+                    isMandatory,
                     numberLabel,
                     numberPlaceholder,
                     expiryLabel,
@@ -564,6 +566,7 @@ function DocumentTypeForm({
                 await api.documentTypes.create({
                     docType,
                     displayName,
+                    isMandatory,
                     numberLabel,
                     numberPlaceholder,
                     expiryLabel,
@@ -606,6 +609,16 @@ function DocumentTypeForm({
                     className="mt-1"
                     required
                 />
+            </div>
+            <div className="flex items-center gap-2">
+                <Checkbox
+                    id="doc-type-mandatory"
+                    checked={isMandatory}
+                    onCheckedChange={(v) => setIsMandatory(v === true)}
+                />
+                <label htmlFor="doc-type-mandatory" className="text-sm font-medium text-foreground cursor-pointer">
+                    Mandatory (global default). Companies can override in Compliance Rules.
+                </label>
             </div>
             <div className="grid grid-cols-2 gap-4">
                 <div>

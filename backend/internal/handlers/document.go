@@ -115,6 +115,43 @@ func scanDocumentWithRule(scanner interface {
 	return nil
 }
 
+// scanDocumentWithRuleAndDisplayName is like scanDocumentWithRule but also scans display_name (e.g. from document_types).
+func scanDocumentWithRuleAndDisplayName(scanner interface {
+	Scan(dest ...interface{}) error
+}, doc *models.Document, rule *ComplianceRule, dtMandatory **bool, displayName **string) error {
+	var issueDateRaw, expiryRaw, metadataRaw string
+	var docNumber *string
+
+	err := scanner.Scan(
+		&doc.ID, &doc.EmployeeID, &doc.DocumentType,
+		&docNumber, &issueDateRaw, &expiryRaw,
+		&doc.IsPrimary, &metadataRaw,
+		&doc.FileURL, &doc.FileName, &doc.FileSize, &doc.FileType,
+		&doc.LastUpdated, &doc.CreatedAt,
+		&rule.GracePeriodDays, &rule.FinePerDay, &rule.FineType, &rule.FineCap,
+		dtMandatory,
+		displayName,
+	)
+	if err != nil {
+		return err
+	}
+
+	doc.DocumentNumber = docNumber
+	if issueDateRaw != "" {
+		doc.IssueDate = &issueDateRaw
+	}
+	if expiryRaw != "" {
+		doc.ExpiryDate = &expiryRaw
+	}
+	if metadataRaw != "" && metadataRaw != "{}" {
+		doc.Metadata = json.RawMessage(metadataRaw)
+	} else {
+		doc.Metadata = json.RawMessage(`{}`)
+	}
+
+	return nil
+}
+
 // ComplianceRule holds the effective compliance rule for a document (from compliance_rules table).
 type ComplianceRule struct {
 	GracePeriodDays int
@@ -123,13 +160,30 @@ type ComplianceRule struct {
 	FineCap         float64
 }
 
+// documentDisplayName returns display_name from document_types for docType if present, else compliance fallback.
+func (h *DocumentHandler) documentDisplayName(ctx context.Context, docType string) string {
+	var name string
+	err := h.db.GetPool().QueryRow(ctx,
+		`SELECT display_name FROM document_types WHERE doc_type = $1 AND is_active = TRUE`,
+		docType,
+	).Scan(&name)
+	if err == nil && name != "" {
+		return name
+	}
+	return compliance.DisplayName(docType)
+}
+
 // enrichWithCompliance computes status, fine, and days fields for a document.
-// rule can be nil for documents without compliance tracking.
-func enrichWithCompliance(doc *models.Document, rule *ComplianceRule) models.DocumentWithCompliance {
+// rule can be nil for documents without compliance tracking. displayNameFromDB if non-empty is used as DisplayName.
+func enrichWithCompliance(doc *models.Document, rule *ComplianceRule, displayNameFromDB string) models.DocumentWithCompliance {
 	now := time.Now()
+	displayName := displayNameFromDB
+	if displayName == "" {
+		displayName = compliance.DisplayName(doc.DocumentType)
+	}
 	dwc := models.DocumentWithCompliance{
 		Document:    *doc,
-		DisplayName: compliance.DisplayName(doc.DocumentType),
+		DisplayName: displayName,
 	}
 
 	graceDays := 0
@@ -265,7 +319,7 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		rulePtr = &rule
 	}
 
-	result := enrichWithCompliance(&doc, rulePtr)
+	result := enrichWithCompliance(&doc, rulePtr, h.documentDisplayName(ctx, doc.DocumentType))
 	JSON(w, http.StatusCreated, map[string]interface{}{
 		"data":    result,
 		"message": "Document created successfully",
@@ -301,14 +355,15 @@ func (h *DocumentHandler) ListByEmployee(w http.ResponseWriter, r *http.Request)
 			COALESCE(cr.fine_per_day, gr.fine_per_day, 0),
 			COALESCE(cr.fine_type, gr.fine_type, 'daily'),
 			COALESCE(cr.fine_cap, gr.fine_cap, 0),
-			dt.is_mandatory
+			COALESCE(cr.is_mandatory, dt.is_mandatory),
+			dt.display_name
 		FROM documents d
 		LEFT JOIN employees e ON d.employee_id = e.id
 		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
 		LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
 		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
 		WHERE d.employee_id = $1
-		ORDER BY COALESCE(dt.is_mandatory, FALSE) DESC, COALESCE(dt.sort_order, 100) ASC, d.created_at DESC
+		ORDER BY COALESCE(cr.is_mandatory, dt.is_mandatory) DESC NULLS LAST, COALESCE(dt.sort_order, 100) ASC, d.created_at DESC
 	`, docCols), employeeID)
 	if err != nil {
 		log.Printf("Error fetching documents: %v", err)
@@ -322,7 +377,8 @@ func (h *DocumentHandler) ListByEmployee(w http.ResponseWriter, r *http.Request)
 		var doc models.Document
 		var rule ComplianceRule
 		var dtMandatory *bool
-		if err := scanDocumentWithRule(rows, &doc, &rule, &dtMandatory); err != nil {
+		var displayName *string
+		if err := scanDocumentWithRuleAndDisplayName(rows, &doc, &rule, &dtMandatory, &displayName); err != nil {
 			log.Printf("Error scanning document: %v", err)
 			continue
 		}
@@ -333,7 +389,11 @@ func (h *DocumentHandler) ListByEmployee(w http.ResponseWriter, r *http.Request)
 		if rule.FinePerDay > 0 || rule.GracePeriodDays > 0 {
 			rulePtr = &rule
 		}
-		documents = append(documents, enrichWithCompliance(&doc, rulePtr))
+		dn := ""
+		if displayName != nil {
+			dn = *displayName
+		}
+		documents = append(documents, enrichWithCompliance(&doc, rulePtr, dn))
 	}
 
 	mandatoryTotal := 0
@@ -382,7 +442,8 @@ func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			COALESCE(cr.fine_per_day, gr.fine_per_day, 0),
 			COALESCE(cr.fine_type, gr.fine_type, 'daily'),
 			COALESCE(cr.fine_cap, gr.fine_cap, 0),
-			COALESCE(dt.is_mandatory, FALSE),
+			COALESCE(cr.is_mandatory, dt.is_mandatory),
+			dt.display_name,
 			e.name AS employee_name, c.name AS company_name
 		FROM documents d
 		JOIN employees e ON d.employee_id = e.id
@@ -395,7 +456,7 @@ func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	var doc models.Document
 	var rule ComplianceRule
-	var employeeName, companyName string
+	var displayName, employeeName, companyName string
 
 	var issueDateRaw, expiryRaw, metadataRaw string
 	var docNumber *string
@@ -407,6 +468,7 @@ func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		&doc.LastUpdated, &doc.CreatedAt,
 		&rule.GracePeriodDays, &rule.FinePerDay, &rule.FineType, &rule.FineCap,
 		&doc.IsMandatory,
+		&displayName,
 		&employeeName, &companyName,
 	)
 	if err != nil {
@@ -429,7 +491,7 @@ func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		rulePtr = &rule
 	}
 
-	result := enrichWithCompliance(&doc, rulePtr)
+	result := enrichWithCompliance(&doc, rulePtr, displayName)
 	JSON(w, http.StatusOK, map[string]interface{}{
 		"data": map[string]interface{}{
 			"document":     result,
@@ -652,7 +714,7 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		rulePtr = &rule
 	}
 
-	result := enrichWithCompliance(&doc, rulePtr)
+	result := enrichWithCompliance(&doc, rulePtr, h.documentDisplayName(ctx, doc.DocumentType))
 	JSON(w, http.StatusOK, map[string]interface{}{
 		"data":    result,
 		"message": "Document updated successfully",
@@ -939,7 +1001,7 @@ func (h *DocumentHandler) Renew(w http.ResponseWriter, r *http.Request) {
 		rulePtr = &rule
 	}
 
-	result := enrichWithCompliance(&newDoc, rulePtr)
+	result := enrichWithCompliance(&newDoc, rulePtr, h.documentDisplayName(ctx, newDoc.DocumentType))
 	JSON(w, http.StatusCreated, map[string]interface{}{
 		"data":    result,
 		"message": "Document renewed successfully",
