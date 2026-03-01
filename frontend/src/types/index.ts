@@ -157,6 +157,7 @@ export interface DashboardMetrics {
     activeDocuments: number;
     expiringSoon: number;
     expired: number;
+    inGrace: number;
 }
 
 export interface ExpiryAlert {

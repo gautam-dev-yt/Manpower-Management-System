@@ -84,8 +84,6 @@ export default function DashboardPage() {
 
   if (!metrics) return null;
 
-  const inGraceCount = compliance?.documentsByStatus?.in_grace ?? 0;
-
   // Build chart data from metrics
   const donutData = [
     { name: 'Valid', value: metrics.activeDocuments, color: CHART_COLORS.valid },
@@ -97,11 +95,10 @@ export default function DashboardPage() {
 
   const metricCards = [
     { label: 'Total Employees', value: metrics.totalEmployees, sub: 'Active workforce', icon: Users, href: '/employees' },
-    // status=active is normalized to "valid" on employees page so the doc-status dropdown shows "Valid" (same filter)
     { label: 'Active Documents', value: metrics.activeDocuments, sub: 'Valid documents', icon: FileText, href: '/employees?status=active' },
     { label: 'Expiring Soon', value: metrics.expiringSoon, sub: 'Within 30 days', icon: AlertTriangle, accent: metrics.expiringSoon > 0 ? 'text-yellow-600 dark:text-yellow-400' : '', href: '/employees?status=expiring' },
     { label: 'In penalty', value: metrics.expired, sub: 'Past grace — fines may apply', icon: XCircle, accent: metrics.expired > 0 ? 'text-red-600 dark:text-red-400' : '', href: '/employees?status=expired' },
-    { label: 'In Grace', value: inGraceCount, sub: 'Renew before fines', icon: Clock, accent: inGraceCount > 0 ? 'text-orange-600 dark:text-orange-400' : '', href: '/employees?status=in_grace' },
+    { label: 'In Grace', value: metrics.inGrace, sub: 'Renew before fines', icon: Clock, accent: metrics.inGrace > 0 ? 'text-orange-600 dark:text-orange-400' : '', href: '/employees?status=in_grace' },
   ];
 
   return (

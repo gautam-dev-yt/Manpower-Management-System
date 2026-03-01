@@ -96,6 +96,23 @@ func (h *DashboardHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = pool.QueryRow(ctx, fmt.Sprintf(`
+		SELECT COUNT(*) FROM documents d
+		JOIN employees e ON d.employee_id = e.id
+		LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
+		LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = e.company_id
+		LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
+		WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE AND d.expiry_date IS NOT NULL
+		  AND d.expiry_date < CURRENT_DATE
+		  AND (d.expiry_date + COALESCE(cr.grace_period_days, gr.grace_period_days, 0) * INTERVAL '1 day') >= CURRENT_DATE
+		  AND e.exit_type IS NULL%s
+	`, scopeFilter), scopeArgs...).Scan(&metrics.InGrace)
+	if err != nil {
+		log.Printf("Error querying in grace: %v", err)
+		JSONError(w, http.StatusInternalServerError, "Failed to fetch metrics")
+		return
+	}
+
 	JSON(w, http.StatusOK, metrics)
 }
 

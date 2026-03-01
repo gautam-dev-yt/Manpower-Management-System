@@ -8,6 +8,7 @@ type DashboardMetrics struct {
 	ActiveDocuments int `json:"activeDocuments"`
 	ExpiringSoon    int `json:"expiringSoon"`
 	Expired         int `json:"expired"`
+	InGrace         int `json:"inGrace"`
 }
 
 // ── Company ──────────────────────────────────────────────────────
