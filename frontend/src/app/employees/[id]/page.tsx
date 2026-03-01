@@ -207,7 +207,20 @@ export default function EmployeeDetailPage() {
                         <div className="flex-1 min-w-0">
                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                 <div>
-                                    <h1 className="text-2xl font-bold text-foreground">{employee.name}</h1>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <h1 className="text-2xl font-bold text-foreground">{employee.name}</h1>
+                                        {employee.complianceStatus && employee.complianceStatus !== 'none' && (() => {
+                                            const cfg = getStatusConfig(employee.complianceStatus);
+                                            return (
+                                                <Badge className={cfg.badge} variant="outline">
+                                                    {cfg.label}
+                                                    {employee.urgentDocType && (employee.complianceStatus === 'penalty_active' || employee.complianceStatus === 'in_grace' || employee.complianceStatus === 'expiring_soon') && (
+                                                        <span className="ml-1 opacity-90">· {docDisplayName(employee.urgentDocType)}</span>
+                                                    )}
+                                                </Badge>
+                                            );
+                                        })()}
+                                    </div>
                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-sm text-muted-foreground">
                                         <span className="flex items-center gap-1.5"><Briefcase className="h-4 w-4" /> {employee.trade}</span>
                                         <span className="flex items-center gap-1.5"><Building2 className="h-4 w-4" /> {employee.companyName}</span>

@@ -110,7 +110,7 @@ export default function EmployeesPage() {
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [companyFilter, setCompanyFilter] = useState(searchParams.get('company_id') || 'all');
     const [docStatusFilter, setDocStatusFilter] = useState(initialDocStatus);
-    const [empStatusFilter, setEmpStatusFilter] = useState(searchParams.get('emp_status') || 'all');
+    const [empStatusFilter, setEmpStatusFilter] = useState(searchParams.get('emp_status') || 'active');
     const [tradeFilter, setTradeFilter] = useState(searchParams.get('trade') || '');
 
     // Debounce search — 300ms delay
@@ -184,7 +184,7 @@ export default function EmployeesPage() {
             if (debouncedSearch) params.search = debouncedSearch;
             if (companyFilter !== 'all') params.company_id = companyFilter;
             if (docStatusFilter !== 'all') params.status = docStatusFilter;
-            if (empStatusFilter !== 'all') params.emp_status = empStatusFilter;
+            params.emp_status = empStatusFilter === 'all' ? 'all' : empStatusFilter;
             if (tradeFilter) params.trade = tradeFilter;
 
             const res = await api.employees.list(params);

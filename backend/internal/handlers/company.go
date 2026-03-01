@@ -40,19 +40,46 @@ func (h *CompanyHandler) List(w http.ResponseWriter, r *http.Request) {
 	where, args, argIdx = appendCompanyScope(ctx, where, args, argIdx, "c.id")
 	_ = argIdx
 
+	// Count only active employees (exit_type IS NULL). Compliance counts: penalty, grace, expiring docs.
 	rows, err := pool.Query(ctx, fmt.Sprintf(`
 		SELECT c.id, c.name, COALESCE(c.currency, 'AED'),
 			c.trade_license_number, c.establishment_card_number,
 			c.mohre_category, c.regulatory_authority,
 			c.created_at::text, c.updated_at::text,
-			COUNT(e.id) AS employee_count
+			COUNT(e.id) AS employee_count,
+			COALESCE(comp.penalty_count, 0) AS penalty_count,
+			COALESCE(comp.grace_count, 0) AS grace_count,
+			COALESCE(comp.expiring_count, 0) AS expiring_count
 		FROM companies c
-		LEFT JOIN employees e ON e.company_id = c.id
+		LEFT JOIN employees e ON e.company_id = c.id AND e.exit_type IS NULL
+		LEFT JOIN LATERAL (
+			SELECT
+				COUNT(d.id) FILTER (WHERE d.expiry_date IS NOT NULL
+					AND d.expiry_date < CURRENT_DATE
+					AND (d.expiry_date + COALESCE(cr.grace_period_days, gr.grace_period_days, 0) * INTERVAL '1 day') < CURRENT_DATE
+				)::int AS penalty_count,
+				COUNT(d.id) FILTER (WHERE d.expiry_date IS NOT NULL
+					AND d.expiry_date < CURRENT_DATE
+					AND COALESCE(cr.grace_period_days, gr.grace_period_days, 0) > 0
+					AND (d.expiry_date + COALESCE(cr.grace_period_days, gr.grace_period_days, 0) * INTERVAL '1 day') >= CURRENT_DATE
+				)::int AS grace_count,
+				COUNT(d.id) FILTER (WHERE d.expiry_date IS NOT NULL
+					AND d.expiry_date >= CURRENT_DATE
+					AND d.expiry_date <= CURRENT_DATE + INTERVAL '30 days'
+				)::int AS expiring_count
+			FROM documents d
+			JOIN employees emp ON d.employee_id = emp.id AND emp.company_id = c.id AND emp.exit_type IS NULL
+			LEFT JOIN document_types dt ON dt.doc_type = d.document_type AND dt.is_active = TRUE
+			LEFT JOIN compliance_rules cr ON cr.doc_type = d.document_type AND cr.company_id = c.id
+			LEFT JOIN compliance_rules gr ON gr.doc_type = d.document_type AND gr.company_id IS NULL
+			WHERE COALESCE(dt.is_mandatory, FALSE) = TRUE
+		) comp ON TRUE
 		%s
 		GROUP BY c.id, c.name, c.currency,
 			c.trade_license_number, c.establishment_card_number,
 			c.mohre_category, c.regulatory_authority,
-			c.created_at, c.updated_at
+			c.created_at, c.updated_at,
+			comp.penalty_count, comp.grace_count, comp.expiring_count
 		ORDER BY c.name ASC
 	`, where), args...)
 	if err != nil {
@@ -64,7 +91,10 @@ func (h *CompanyHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	type CompanyWithCount struct {
 		models.Company
-		EmployeeCount int `json:"employeeCount"`
+		EmployeeCount  int `json:"employeeCount"`
+		PenaltyCount   int `json:"penaltyCount"`
+		GraceCount     int `json:"graceCount"`
+		ExpiringCount  int `json:"expiringCount"`
 	}
 
 	companies := []CompanyWithCount{}
@@ -76,6 +106,7 @@ func (h *CompanyHandler) List(w http.ResponseWriter, r *http.Request) {
 			&c.MohreCategory, &c.RegulatoryAuthority,
 			&c.CreatedAt, &c.UpdatedAt,
 			&c.EmployeeCount,
+			&c.PenaltyCount, &c.GraceCount, &c.ExpiringCount,
 		); err != nil {
 			log.Printf("Error scanning company: %v", err)
 			continue
@@ -152,7 +183,7 @@ func (h *CompanyHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			LEFT JOIN compliance_rules gr2 ON gr2.doc_type = d2.document_type AND gr2.company_id IS NULL
 			WHERE d2.employee_id = e.id AND COALESCE(dt2.is_mandatory, FALSE) = TRUE
 		) ds ON TRUE
-		WHERE e.company_id = $1
+		WHERE e.company_id = $1 AND e.exit_type IS NULL
 		ORDER BY
 			CASE ds.compliance_status
 				WHEN 'penalty_active' THEN 1

@@ -283,7 +283,11 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "%"+search+"%")
 		argIdx++
 	}
-	if empStatus != "" {
+	// Exclude exited employees by default; "all" means include exited
+	if empStatus != "all" {
+		where += " AND e.exit_type IS NULL"
+	}
+	if empStatus != "" && empStatus != "all" {
 		where += fmt.Sprintf(" AND e.status = $%d", argIdx)
 		args = append(args, empStatus)
 		argIdx++

@@ -219,7 +219,7 @@ func (h *DashboardHandler) GetCompanySummary(w http.ResponseWriter, r *http.Requ
 	rows, err := pool.Query(ctx, fmt.Sprintf(`
 		SELECT c.id, c.name, COALESCE(c.currency, 'AED'), COUNT(e.id) AS employee_count
 		FROM companies c
-		LEFT JOIN employees e ON e.company_id = c.id
+		LEFT JOIN employees e ON e.company_id = c.id AND e.exit_type IS NULL
 		WHERE 1=1%s
 		GROUP BY c.id, c.name, c.currency
 		ORDER BY employee_count DESC

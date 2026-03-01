@@ -33,6 +33,9 @@ interface CompanyWithCount {
     mohreCategory?: string | null;
     regulatoryAuthority?: string | null;
     employeeCount: number;
+    penaltyCount: number;
+    graceCount: number;
+    expiringCount: number;
     createdAt: string;
     updatedAt: string;
 }
@@ -290,6 +293,25 @@ export default function CompaniesPage() {
                                     <Users className="h-4 w-4" />
                                     <span>{company.employeeCount} employee{company.employeeCount !== 1 ? 's' : ''}</span>
                                 </div>
+                                {(company.penaltyCount > 0 || company.graceCount > 0 || company.expiringCount > 0) && (
+                                    <div className="flex flex-wrap gap-2 text-xs">
+                                        {company.penaltyCount > 0 && (
+                                            <span className="font-medium text-red-600 dark:text-red-400">
+                                                {company.penaltyCount} penalty
+                                            </span>
+                                        )}
+                                        {company.graceCount > 0 && (
+                                            <span className="font-medium text-orange-600 dark:text-orange-400">
+                                                {company.graceCount} grace
+                                            </span>
+                                        )}
+                                        {company.expiringCount > 0 && (
+                                            <span className="font-medium text-yellow-600 dark:text-yellow-500">
+                                                {company.expiringCount} expiring
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                                 {(company.regulatoryAuthority || company.mohreCategory || company.tradeLicenseNumber) && (
                                     <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
                                         {company.regulatoryAuthority && (
