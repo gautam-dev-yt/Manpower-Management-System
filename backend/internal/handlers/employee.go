@@ -294,7 +294,18 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
-	// Doc status filter — uses the compliance status from LATERAL subquery
+	// Doc status filter: either by aggregate compliance_status (LATERAL) or by "has at least one" doc (EXISTS).
+	// "valid"/"active" uses EXISTS so we show employees who have at least one valid mandatory document (same
+	// definition as dashboard Active Documents), not only those with all docs valid — so the app is usable
+	// before every doc is complete.
+	const existsValidDoc = ` AND EXISTS (
+		SELECT 1 FROM documents d2
+		LEFT JOIN document_types dt2 ON dt2.doc_type = d2.document_type AND dt2.is_active = TRUE
+		WHERE d2.employee_id = e.id
+		  AND COALESCE(dt2.is_mandatory, FALSE) = TRUE
+		  AND d2.expiry_date IS NOT NULL
+		  AND d2.expiry_date > CURRENT_DATE + INTERVAL '30 days'
+	)`
 	var statusFilter string
 	switch docStatus {
 	case "expiring", "expiring_soon":
@@ -304,7 +315,7 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 	case "in_grace":
 		statusFilter = " AND ds.compliance_status = 'in_grace'"
 	case "valid", "active":
-		statusFilter = " AND ds.compliance_status = 'valid'"
+		statusFilter = existsValidDoc
 	case "incomplete":
 		statusFilter = " AND ds.compliance_status = 'incomplete'"
 	}

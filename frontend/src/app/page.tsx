@@ -102,6 +102,7 @@ export default function DashboardPage() {
 
   const metricCards = [
     { label: 'Total Employees', value: metrics.totalEmployees, sub: 'Active workforce', icon: Users, href: '/employees' },
+    // status=active is normalized to "valid" on employees page so the doc-status dropdown shows "Valid" (same filter)
     { label: 'Active Documents', value: metrics.activeDocuments, sub: 'Valid documents', icon: FileText, href: '/employees?status=active' },
     { label: 'Expiring Soon', value: metrics.expiringSoon, sub: 'Within 30 days', icon: AlertTriangle, accent: metrics.expiringSoon > 0 ? 'text-yellow-600 dark:text-yellow-400' : '', href: '/employees?status=expiring' },
     { label: 'Expired', value: metrics.expired, sub: 'Requires renewal', icon: XCircle, accent: metrics.expired > 0 ? 'text-red-600 dark:text-red-400' : '', href: '/employees?status=expired' },

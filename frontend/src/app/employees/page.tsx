@@ -101,11 +101,15 @@ export default function EmployeesPage() {
     const [total, setTotal] = useState(0);
     const limit = 20;
 
-    // Filters — initialize from URL params (dashboard drilldown links)
+    // Filters — initialize from URL params (dashboard drilldown links).
+    // Normalize doc status: dashboard uses ?status=active for "Active Documents" but our dropdown option value is "valid".
+    // Map active → valid so the Select has a matching option and "Valid" is shown selected instead of blank.
+    const urlStatus = searchParams.get('status') || '';
+    const initialDocStatus = urlStatus === 'active' ? 'valid' : (urlStatus || 'all');
     const [search, setSearch] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [companyFilter, setCompanyFilter] = useState(searchParams.get('company_id') || 'all');
-    const [docStatusFilter, setDocStatusFilter] = useState(searchParams.get('status') || 'all');
+    const [docStatusFilter, setDocStatusFilter] = useState(initialDocStatus);
     const [empStatusFilter, setEmpStatusFilter] = useState(searchParams.get('emp_status') || 'all');
     const [tradeFilter, setTradeFilter] = useState(searchParams.get('trade') || '');
 

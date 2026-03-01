@@ -1,17 +1,15 @@
-version: '3.8'
+# FROM golang:1.23-alpine AS builder
+# WORKDIR /app
+# COPY go.mod go.sum ./
+# RUN go mod download
+# COPY . .
+# RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/api
 
-services:
-  postgres:
-    image: postgres:16
-    container_name: manpower-postgres
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: clown
-      POSTGRES_DB: manpower_dev
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
+# FROM alpine:3.19
+# RUN apk add --no-cache ca-certificates tzdata
+# WORKDIR /app
+# COPY --from=builder /app/server .
+# COPY migrations/ ./migrations/
+# RUN mkdir -p /app/uploads
+# EXPOSE 8080
+# CMD ["./server"]

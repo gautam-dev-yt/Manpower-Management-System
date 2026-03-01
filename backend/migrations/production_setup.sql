@@ -1,8 +1,8 @@
 -- ============================================================
 -- MANPOWER MANAGEMENT SYSTEM - PRODUCTION DATABASE SETUP
 -- ============================================================
--- Paste this entire file into Neon SQL Editor to set up the
--- production database. Run it ONCE on a fresh database.
+-- Run ONCE on a fresh local PostgreSQL or Neon database (e.g. paste
+-- into Neon SQL Editor). Schema matches migrations 001–010 (final state).
 -- ============================================================
 
 -- ── Core Tables ─────────────────────────────────────────────
@@ -128,15 +128,10 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_primary BOOLEAN DEFAULT FALSE;
 
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'AED';
 
--- ── Compliance Engine (migration 006) ───────────────────────
+-- ── Compliance Engine (migration 006; 010: no grace/fine/mandatory on documents) ─
 
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_number VARCHAR(100);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS issue_date DATE;
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS grace_period_days INTEGER DEFAULT 0;
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS fine_per_day DECIMAL(10,2) DEFAULT 0;
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS fine_type VARCHAR(20) DEFAULT 'daily';
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS fine_cap DECIMAL(10,2) DEFAULT 0;
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_mandatory BOOLEAN DEFAULT false;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
 
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS exit_type VARCHAR(20);
@@ -165,8 +160,6 @@ SELECT * FROM (VALUES
 ) AS seed(a, b, c)
 WHERE NOT EXISTS (SELECT 1 FROM document_dependencies LIMIT 1);
 
-CREATE INDEX IF NOT EXISTS idx_documents_mandatory
-    ON documents(employee_id) WHERE is_mandatory = true;
 CREATE INDEX IF NOT EXISTS idx_documents_expiry
     ON documents(expiry_date) WHERE expiry_date IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_employees_exit
@@ -175,21 +168,37 @@ CREATE INDEX IF NOT EXISTS idx_employees_exit
 -- ── Admin Settings (migration 007) ──────────────────────────
 
 CREATE TABLE IF NOT EXISTS document_types (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    doc_type           VARCHAR(100) NOT NULL UNIQUE,
-    display_name       VARCHAR(200) NOT NULL,
-    is_mandatory       BOOLEAN NOT NULL DEFAULT FALSE,
-    has_expiry         BOOLEAN NOT NULL DEFAULT TRUE,
-    number_label       VARCHAR(100) NOT NULL DEFAULT 'Document Number',
-    number_placeholder VARCHAR(200) NOT NULL DEFAULT '',
-    expiry_label       VARCHAR(100) NOT NULL DEFAULT 'Expiry Date',
-    sort_order         INT NOT NULL DEFAULT 100,
-    metadata_fields    JSONB NOT NULL DEFAULT '[]',
-    is_system          BOOLEAN NOT NULL DEFAULT FALSE,
-    is_active          BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_type              VARCHAR(100) NOT NULL UNIQUE,
+    display_name          VARCHAR(200) NOT NULL,
+    is_mandatory          BOOLEAN NOT NULL DEFAULT FALSE,
+    has_expiry            BOOLEAN NOT NULL DEFAULT TRUE,
+    number_label          VARCHAR(100) NOT NULL DEFAULT 'Document Number',
+    number_placeholder    VARCHAR(200) NOT NULL DEFAULT '',
+    expiry_label          VARCHAR(100) NOT NULL DEFAULT 'Expiry Date',
+    sort_order            INT NOT NULL DEFAULT 100,
+    metadata_fields       JSONB NOT NULL DEFAULT '[]',
+    is_system             BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active             BOOLEAN NOT NULL DEFAULT TRUE,
+    show_document_number  BOOLEAN NOT NULL DEFAULT TRUE,
+    require_document_number BOOLEAN NOT NULL DEFAULT FALSE,
+    show_issue_date       BOOLEAN NOT NULL DEFAULT TRUE,
+    require_issue_date    BOOLEAN NOT NULL DEFAULT FALSE,
+    show_expiry_date      BOOLEAN NOT NULL DEFAULT TRUE,
+    require_expiry_date   BOOLEAN NOT NULL DEFAULT FALSE,
+    show_file             BOOLEAN NOT NULL DEFAULT TRUE,
+    require_file          BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE document_types ADD COLUMN IF NOT EXISTS show_document_number BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE document_types ADD COLUMN IF NOT EXISTS require_document_number BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE document_types ADD COLUMN IF NOT EXISTS show_issue_date BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE document_types ADD COLUMN IF NOT EXISTS require_issue_date BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE document_types ADD COLUMN IF NOT EXISTS show_expiry_date BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE document_types ADD COLUMN IF NOT EXISTS require_expiry_date BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE document_types ADD COLUMN IF NOT EXISTS show_file BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE document_types ADD COLUMN IF NOT EXISTS require_file BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS compliance_rules (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -217,13 +226,34 @@ SELECT * FROM (VALUES
     ('visa',             'Residence Visa',              TRUE,  TRUE, 'Visa Number',                 'e.g. 201/2024/1234567',   'Expiry Date',   20, '[{"key":"visa_type","label":"Visa Type","type":"select","options":[{"value":"employment","label":"Employment"},{"value":"residence","label":"Residence"},{"value":"mission","label":"Mission"},{"value":"green","label":"Green Visa"},{"value":"golden","label":"Golden Visa"}]},{"key":"sponsor","label":"Sponsor / Company","type":"text","placeholder":"Sponsoring company"},{"key":"linked_passport","label":"Linked Passport Number","type":"text","placeholder":"Passport number"}]'::jsonb, TRUE),
     ('emirates_id',      'Emirates ID',                 TRUE,  TRUE, 'Emirates ID Number',          'e.g. 784-1990-1234567-1', 'Expiry Date',   30, '[{"key":"linked_visa","label":"Linked Visa Number","type":"text","placeholder":"Visa number"}]'::jsonb, TRUE),
     ('work_permit',      'Work Permit / Labour Card',   TRUE,  TRUE, 'Permit / Labour Card Number', 'e.g. 1234567',            'Expiry Date',   40, '[{"key":"mohre_file_number","label":"MoHRE File Number","type":"text","placeholder":"e.g. 12345"},{"key":"job_title","label":"Job Title (on permit)","type":"text","placeholder":"e.g. Electrician"}]'::jsonb, TRUE),
-    ('health_insurance', 'Health Insurance',             TRUE,  TRUE, 'Policy Number',               'e.g. POL-2024-12345',     'Expiry Date',   50, '[{"key":"insurer_name","label":"Insurance Provider","type":"text","placeholder":"e.g. Daman, Oman Insurance"},{"key":"coverage_amount","label":"Coverage Amount (AED)","type":"number","placeholder":"e.g. 250000"}]'::jsonb, TRUE),
+    ('health_insurance', 'Health Insurance',             FALSE, TRUE, 'Policy Number',               'e.g. POL-2024-12345',     'Expiry Date',   50, '[{"key":"insurer_name","label":"Insurance Provider","type":"text","placeholder":"e.g. Daman, Oman Insurance"},{"key":"coverage_amount","label":"Coverage Amount (AED)","type":"number","placeholder":"e.g. 250000"}]'::jsonb, TRUE),
     ('iloe_insurance',   'ILOE Insurance',              TRUE,  TRUE, 'Subscription ID',             'e.g. ILOE-2024-12345',    'Renewal Date',  60, '[{"key":"category","label":"Category","type":"select","options":[{"value":"A","label":"Category A"},{"value":"B","label":"Category B"}]},{"key":"subscription_status","label":"Subscription Status","type":"select","options":[{"value":"active","label":"Active"},{"value":"lapsed","label":"Lapsed"}]}]'::jsonb, TRUE),
-    ('medical_fitness',  'Medical Fitness Certificate',  TRUE,  TRUE, 'Certificate Number',          'e.g. MED-2024-12345',     'Valid Until',   70, '[{"key":"test_date","label":"Test Date","type":"date"},{"key":"result","label":"Result","type":"select","options":[{"value":"fit","label":"Fit"},{"value":"unfit","label":"Unfit"}]}]'::jsonb, TRUE),
+    ('medical_fitness',  'Medical Fitness Certificate',  FALSE, TRUE, 'Certificate Number',          'e.g. MED-2024-12345',     'Valid Until',   70, '[{"key":"test_date","label":"Test Date","type":"date"},{"key":"result","label":"Result","type":"select","options":[{"value":"fit","label":"Fit"},{"value":"unfit","label":"Unfit"}]}]'::jsonb, TRUE),
     ('trade_license',    'Trade License',               FALSE, TRUE, 'License Number',              'e.g. TL-12345',           'Expiry Date',   80, '[]'::jsonb, TRUE),
     ('other',            'Other',                       FALSE, TRUE, 'Document Number',             'e.g. DOC-12345',          'Expiry Date',  999, '[{"key":"custom_name","label":"Document Name","type":"text","placeholder":"e.g. Certificate of Good Conduct","required":true}]'::jsonb, TRUE)
 ) AS seed(a, b, c, d, e, f, g, h, i, j)
 WHERE NOT EXISTS (SELECT 1 FROM document_types LIMIT 1);
+
+-- Field requirements per doc type (migration 008)
+UPDATE document_types SET
+    require_document_number = TRUE,
+    require_issue_date = TRUE,
+    require_expiry_date = TRUE,
+    require_file = TRUE
+WHERE doc_type IN ('passport', 'visa', 'emirates_id', 'work_permit', 'iloe_insurance');
+UPDATE document_types SET
+    require_expiry_date = TRUE,
+    require_file = TRUE
+WHERE doc_type IN ('health_insurance', 'medical_fitness');
+UPDATE document_types SET
+    require_expiry_date = TRUE,
+    require_file = TRUE
+WHERE doc_type = 'trade_license';
+UPDATE document_types SET
+    require_file = TRUE,
+    show_issue_date = FALSE,
+    require_issue_date = FALSE
+WHERE doc_type = 'other';
 
 -- Seed global compliance rules
 INSERT INTO compliance_rules (company_id, doc_type, grace_period_days, fine_per_day, fine_type, fine_cap)
@@ -238,6 +268,22 @@ SELECT NULL, a, b, c, d, e FROM (VALUES
 ) AS seed(a, b, c, d, e)
 WHERE NOT EXISTS (SELECT 1 FROM compliance_rules LIMIT 1);
 
+-- ── User–company scoping (migration 009) ─────────────────────
+
+CREATE TABLE IF NOT EXISTS user_companies (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, company_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_companies_user ON user_companies(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_companies_company ON user_companies(company_id);
+
+INSERT INTO user_companies (user_id, company_id)
+SELECT user_id, id FROM companies WHERE user_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
 -- ============================================================
--- DONE! Your production database is ready.
+-- DONE! Your production database is ready (schema through 010).
 -- ============================================================

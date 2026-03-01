@@ -4,7 +4,7 @@
 
 ---
 
-**Last updated:** 2026-02-28
+**Last updated:** 2026-03-01
 
 ## Deploy state
 
@@ -21,3 +21,5 @@
 
 - 2026-02: Production live (Vercel, Render, Neon, R2); role system (009), document rework (008), admin settings (007); compliance and settings in place.
 - 2026-02-28: Added CURRENT_STATUS.md and Cursor rules/skills for AI/LLM context; PROJECT_ANALYSIS.md is canonical reference.
+- 2026-03-01: Updated production_setup.sql to match schema through migration 010 (no deprecated doc columns, document_types field config, user_companies); suitable for fresh local Postgres or Neon.
+- 2026-03-01: Dashboard/employees filter fix: "Active Documents" list now shows employees with at least one valid doc (EXISTS), not only full compliance; employees page normalizes URL `?status=active` → doc-status "Valid" so dropdown is not blank when redirected from dashboard.
