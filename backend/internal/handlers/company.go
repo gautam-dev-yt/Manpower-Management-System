@@ -127,10 +127,42 @@ func (h *CompanyHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := pool.Query(ctx, `
-		SELECT e.id, e.name, e.trade, e.status, e.photo_url, e.nationality
+		SELECT e.id, e.name, e.trade, e.status, e.photo_url, e.nationality,
+			ds.compliance_status, ds.urgent_doc_type
 		FROM employees e
+		LEFT JOIN LATERAL (
+			SELECT
+				CASE
+					WHEN COUNT(*) = 0 THEN 'none'
+					WHEN COUNT(*) FILTER (WHERE d2.expiry_date IS NOT NULL AND d2.expiry_date < CURRENT_DATE AND (d2.expiry_date + COALESCE(cr2.grace_period_days, gr2.grace_period_days, 0) * INTERVAL '1 day') < CURRENT_DATE) > 0 THEN 'penalty_active'
+					WHEN COUNT(*) FILTER (WHERE d2.expiry_date IS NOT NULL AND d2.expiry_date < CURRENT_DATE AND (d2.expiry_date + COALESCE(cr2.grace_period_days, gr2.grace_period_days, 0) * INTERVAL '1 day') >= CURRENT_DATE) > 0 THEN 'in_grace'
+					WHEN COUNT(*) FILTER (WHERE d2.expiry_date IS NOT NULL AND d2.expiry_date >= CURRENT_DATE AND d2.expiry_date <= CURRENT_DATE + INTERVAL '30 days') > 0 THEN 'expiring_soon'
+					WHEN COUNT(*) FILTER (WHERE d2.expiry_date IS NULL OR d2.document_number IS NULL OR d2.document_number = '') > 0 THEN 'incomplete'
+					ELSE 'valid'
+				END AS compliance_status,
+				(SELECT dd.document_type FROM documents dd
+				 LEFT JOIN document_types ddt ON ddt.doc_type = dd.document_type AND ddt.is_active = TRUE
+				 WHERE dd.employee_id = e.id AND COALESCE(ddt.is_mandatory, FALSE) = TRUE
+				   AND dd.expiry_date IS NOT NULL
+				 ORDER BY dd.expiry_date ASC LIMIT 1
+				) AS urgent_doc_type
+			FROM documents d2
+			LEFT JOIN document_types dt2 ON dt2.doc_type = d2.document_type AND dt2.is_active = TRUE
+			LEFT JOIN compliance_rules cr2 ON cr2.doc_type = d2.document_type AND cr2.company_id = e.company_id
+			LEFT JOIN compliance_rules gr2 ON gr2.doc_type = d2.document_type AND gr2.company_id IS NULL
+			WHERE d2.employee_id = e.id AND COALESCE(dt2.is_mandatory, FALSE) = TRUE
+		) ds ON TRUE
 		WHERE e.company_id = $1
-		ORDER BY e.name ASC
+		ORDER BY
+			CASE ds.compliance_status
+				WHEN 'penalty_active' THEN 1
+				WHEN 'in_grace' THEN 2
+				WHEN 'expiring_soon' THEN 3
+				WHEN 'incomplete' THEN 4
+				WHEN 'valid' THEN 5
+				ELSE 6
+			END,
+			e.name ASC
 	`, id)
 	if err != nil {
 		log.Printf("Error fetching employees for company %s: %v", id, err)
@@ -140,18 +172,20 @@ func (h *CompanyHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type CompanyEmployee struct {
-		ID          string  `json:"id"`
-		Name        string  `json:"name"`
-		Trade       string  `json:"trade"`
-		Status      string  `json:"status"`
-		PhotoURL    *string `json:"photoUrl"`
-		Nationality *string `json:"nationality"`
+		ID               string  `json:"id"`
+		Name             string  `json:"name"`
+		Trade            string  `json:"trade"`
+		Status           string  `json:"status"`
+		PhotoURL         *string `json:"photoUrl"`
+		Nationality      *string `json:"nationality"`
+		ComplianceStatus string  `json:"complianceStatus"`
+		UrgentDocType    *string `json:"urgentDocType"`
 	}
 
 	employees := []CompanyEmployee{}
 	for rows.Next() {
 		var emp CompanyEmployee
-		if err := rows.Scan(&emp.ID, &emp.Name, &emp.Trade, &emp.Status, &emp.PhotoURL, &emp.Nationality); err != nil {
+		if err := rows.Scan(&emp.ID, &emp.Name, &emp.Trade, &emp.Status, &emp.PhotoURL, &emp.Nationality, &emp.ComplianceStatus, &emp.UrgentDocType); err != nil {
 			log.Printf("Error scanning employee: %v", err)
 			continue
 		}

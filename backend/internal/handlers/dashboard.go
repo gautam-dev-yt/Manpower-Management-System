@@ -406,14 +406,19 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 
 	companyRows, err := pool.Query(ctx, fmt.Sprintf(`
 		SELECT c.id, c.name, COUNT(DISTINCT e.id) AS emp_count,
-			COUNT(d.id) FILTER (WHERE d.expiry_date IS NOT NULL 
+			COUNT(d.id) FILTER (WHERE d.expiry_date IS NOT NULL
 				AND d.expiry_date < CURRENT_DATE
 				AND (d.expiry_date + COALESCE(cr2.grace_period_days, gr2.grace_period_days, 0) * INTERVAL '1 day') < CURRENT_DATE
 			) AS penalty_count,
-			COUNT(d.id) FILTER (WHERE d.document_number IS NULL 
-				OR d.document_number = ''
-				OR d.expiry_date IS NULL
-			) AS incomplete_count
+			COUNT(d.id) FILTER (WHERE d.expiry_date IS NOT NULL
+				AND d.expiry_date < CURRENT_DATE
+				AND COALESCE(cr2.grace_period_days, gr2.grace_period_days, 0) > 0
+				AND (d.expiry_date + COALESCE(cr2.grace_period_days, gr2.grace_period_days, 0) * INTERVAL '1 day') >= CURRENT_DATE
+			) AS grace_count,
+			COUNT(d.id) FILTER (WHERE d.expiry_date IS NOT NULL
+				AND d.expiry_date >= CURRENT_DATE
+				AND d.expiry_date <= CURRENT_DATE + INTERVAL '30 days'
+			) AS expiring_count
 		FROM companies c
 		LEFT JOIN employees e ON e.company_id = c.id AND e.exit_type IS NULL
 		LEFT JOIN documents d ON d.employee_id = e.id
@@ -422,7 +427,7 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 		LEFT JOIN compliance_rules gr2 ON gr2.doc_type = d.document_type AND gr2.company_id IS NULL
 		WHERE (COALESCE(dt.is_mandatory, FALSE) = TRUE OR d.id IS NULL)%s
 		GROUP BY c.id, c.name
-		ORDER BY penalty_count DESC
+		ORDER BY penalty_count DESC, grace_count DESC
 	`, companyScopeF), compScopeArgs...)
 	if err == nil {
 		defer companyRows.Close()
@@ -430,7 +435,7 @@ func (h *DashboardHandler) GetComplianceStats(w http.ResponseWriter, r *http.Req
 			var cc models.CompanyCompliance
 			if err := companyRows.Scan(
 				&cc.CompanyID, &cc.CompanyName, &cc.EmployeeCount,
-				&cc.PenaltyCount, &cc.IncompleteCount,
+				&cc.PenaltyCount, &cc.GraceCount, &cc.ExpiringCount,
 			); err != nil {
 				continue
 			}

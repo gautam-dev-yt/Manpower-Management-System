@@ -193,7 +193,8 @@ export interface CompanyCompliance {
     companyName: string;
     employeeCount: number;
     penaltyCount: number;
-    incompleteCount: number;
+    graceCount: number;
+    expiringCount: number;
     dailyExposure: number;
     accumulatedFines: number;
 }

@@ -16,10 +16,10 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
 
-// Chart color palette
 const CHART_COLORS = {
   valid: '#22c55e',
   expiring: '#eab308',
+  inGrace: '#f97316',
   inPenalty: '#ef4444',
   bar: '#6366f1',
 };
@@ -84,14 +84,14 @@ export default function DashboardPage() {
 
   if (!metrics) return null;
 
-  // Build chart data from metrics
   const donutData = [
     { name: 'Valid', value: metrics.activeDocuments, color: CHART_COLORS.valid },
     { name: 'Expiring', value: metrics.expiringSoon, color: CHART_COLORS.expiring },
-    { name: 'In penalty', value: metrics.expired, color: CHART_COLORS.inPenalty },
+    { name: 'In Grace', value: metrics.inGrace, color: CHART_COLORS.inGrace },
+    { name: 'In Penalty', value: metrics.expired, color: CHART_COLORS.inPenalty },
   ].filter((d) => d.value > 0);
 
-  const totalDocs = metrics.activeDocuments + metrics.expiringSoon + metrics.expired;
+  const totalDocs = metrics.activeDocuments + metrics.expiringSoon + metrics.inGrace + metrics.expired;
 
   const metricCards = [
     { label: 'Total Employees', value: metrics.totalEmployees, sub: 'Active workforce', icon: Users, href: '/employees' },
@@ -292,7 +292,8 @@ export default function DashboardPage() {
                     <th className="text-left font-medium px-6 py-2">Company</th>
                     <th className="text-center font-medium px-3 py-2">Employees</th>
                     <th className="text-center font-medium px-3 py-2">Penalties</th>
-                    <th className="text-center font-medium px-3 py-2">Incomplete</th>
+                    <th className="text-center font-medium px-3 py-2">In Grace</th>
+                    <th className="text-center font-medium px-3 py-2">Expiring</th>
                     <th className="text-right font-medium px-3 py-2">Daily Exposure</th>
                     <th className="text-right font-medium px-6 py-2">Accumulated</th>
                   </tr>
@@ -313,8 +314,14 @@ export default function DashboardPage() {
                         }
                       </td>
                       <td className="text-center px-3 py-2.5">
-                        {co.incompleteCount > 0
-                          ? <span className="text-yellow-600 dark:text-yellow-400 font-medium">{co.incompleteCount}</span>
+                        {co.graceCount > 0
+                          ? <span className="text-orange-600 dark:text-orange-400 font-medium">{co.graceCount}</span>
+                          : <span className="text-muted-foreground">0</span>
+                        }
+                      </td>
+                      <td className="text-center px-3 py-2.5">
+                        {co.expiringCount > 0
+                          ? <span className="text-yellow-600 dark:text-yellow-400 font-medium">{co.expiringCount}</span>
                           : <span className="text-muted-foreground">0</span>
                         }
                       </td>

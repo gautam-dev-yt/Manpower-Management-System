@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import type { Company } from '@/types';
+import { getStatusConfig, docDisplayName } from '@/lib/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,13 +18,9 @@ interface CompanyEmployee {
     status: string;
     photoUrl?: string | null;
     nationality?: string | null;
+    complianceStatus: string;
+    urgentDocType?: string | null;
 }
-
-const statusColors: Record<string, string> = {
-    active: 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400',
-    on_leave: 'bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-400',
-    inactive: 'bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400',
-};
 
 export default function CompanyDetailPage() {
     const params = useParams();
@@ -133,29 +130,39 @@ export default function CompanyDetailPage() {
                                         <th className="text-left py-3 px-4 font-medium text-muted-foreground">Name</th>
                                         <th className="text-left py-3 px-4 font-medium text-muted-foreground">Trade</th>
                                         <th className="text-left py-3 px-4 font-medium text-muted-foreground">Nationality</th>
-                                        <th className="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                                        <th className="text-left py-3 px-4 font-medium text-muted-foreground">Doc Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {employees.map(emp => (
-                                        <tr key={emp.id} className="border-b border-border/50 hover:bg-accent/30">
-                                            <td className="py-3 px-4">
-                                                <Link
-                                                    href={`/employees/${emp.id}`}
-                                                    className="font-medium text-foreground hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                                >
-                                                    {emp.name}
-                                                </Link>
-                                            </td>
-                                            <td className="py-3 px-4 text-muted-foreground">{emp.trade}</td>
-                                            <td className="py-3 px-4 text-muted-foreground">{emp.nationality || '—'}</td>
-                                            <td className="py-3 px-4">
-                                                <Badge className={statusColors[emp.status] || statusColors.active} variant="outline">
-                                                    {emp.status.replace(/_/g, ' ')}
-                                                </Badge>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {employees.map(emp => {
+                                        const cfg = getStatusConfig(emp.complianceStatus);
+                                        return (
+                                            <tr key={emp.id} className="border-b border-border/50 hover:bg-accent/30">
+                                                <td className="py-3 px-4">
+                                                    <Link
+                                                        href={`/employees/${emp.id}`}
+                                                        className="font-medium text-foreground hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                                    >
+                                                        {emp.name}
+                                                    </Link>
+                                                </td>
+                                                <td className="py-3 px-4 text-muted-foreground">{emp.trade}</td>
+                                                <td className="py-3 px-4 text-muted-foreground">{emp.nationality || '—'}</td>
+                                                <td className="py-3 px-4">
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <Badge className={cfg.badge} variant="outline">
+                                                            {cfg.label}
+                                                        </Badge>
+                                                        {emp.urgentDocType && emp.complianceStatus !== 'valid' && emp.complianceStatus !== 'none' && (
+                                                            <span className="text-[11px] text-muted-foreground">
+                                                                {docDisplayName(emp.urgentDocType)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>

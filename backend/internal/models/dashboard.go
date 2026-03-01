@@ -71,9 +71,10 @@ type CompanyCompliance struct {
 	CompanyID        string  `json:"companyId"`
 	CompanyName      string  `json:"companyName"`
 	EmployeeCount    int     `json:"employeeCount"`
-	PenaltyCount     int     `json:"penaltyCount"` // docs in penalty_active
-	IncompleteCount  int     `json:"incompleteCount"`
-	DailyExposure    float64 `json:"dailyExposure"` // sum of fine_per_day for active penalties
+	PenaltyCount     int     `json:"penaltyCount"`
+	GraceCount       int     `json:"graceCount"`
+	ExpiringCount    int     `json:"expiringCount"`
+	DailyExposure    float64 `json:"dailyExposure"`
 	AccumulatedFines float64 `json:"accumulatedFines"`
 }
 
