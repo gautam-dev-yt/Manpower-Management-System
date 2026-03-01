@@ -73,31 +73,28 @@ export default function SettingsPage() {
             <div className="flex gap-1 border-b border-border">
                 <button
                     onClick={() => setActiveTab('rules')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                        activeTab === 'rules'
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'rules'
                             ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
                             : 'border-transparent text-muted-foreground hover:text-foreground'
-                    }`}
+                        }`}
                 >
                     Compliance Rules
                 </button>
                 <button
                     onClick={() => setActiveTab('types')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                        activeTab === 'types'
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'types'
                             ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
                             : 'border-transparent text-muted-foreground hover:text-foreground'
-                    }`}
+                        }`}
                 >
                     Document Types
                 </button>
                 <button
                     onClick={() => setActiveTab('dependencies')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                        activeTab === 'dependencies'
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'dependencies'
                             ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
                             : 'border-transparent text-muted-foreground hover:text-foreground'
-                    }`}
+                        }`}
                 >
                     Dependencies
                 </button>
@@ -177,7 +174,9 @@ function ComplianceRulesTab() {
                         <CardTitle className="text-lg">Compliance Rules</CardTitle>
                         <CardDescription className="flex items-center gap-1 mt-1">
                             <Info className="h-3.5 w-3.5" />
-                            Changes only affect new employees. Existing documents keep their current values.
+                            {companyId
+                                ? 'Company rules override global defaults. Unset values fall back to global.'
+                                : 'Global defaults apply to all companies unless overridden per company.'}
                         </CardDescription>
                     </div>
                     <div className="flex items-center gap-3">

@@ -64,7 +64,6 @@ export interface Document {
     documentNumber?: string | null;
     issueDate?: string | null;
     expiryDate?: string | null;
-    isPrimary: boolean;
     isMandatory: boolean;
     metadata: Record<string, unknown>;
     fileUrl: string;

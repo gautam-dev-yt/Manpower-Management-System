@@ -15,9 +15,11 @@
 
 ## Latest migration
 
-- `010_drop_deprecated_doc_cols.sql` — dropped deprecated document columns (grace/fine/mandatory now from compliance_rules/document_types).
+- `011_drop_is_primary.sql` — dropped unused `is_primary` column and `idx_documents_primary` index from documents table.
 
 ## Recent changes (append here)
+
+- 2026-03-01: UX cleanup — (1) Subtle red `*` mandatory indicators on doc type chips and doc rows. (2) Moved Edit into 3-dot menu, removed standalone pencil button. (3) Full removal of dead `isPrimary`/`is_primary` feature (frontend types, API client, Go model, handler, route, migration 011). (4) Compliance rules: contextual hint text showing override priority when company is selected.
 
 - 2026-02: Production live (Vercel, Render, Neon, R2); role system (009), document rework (008), admin settings (007); compliance and settings in place.
 - 2026-02-28: Added CURRENT_STATUS.md and Cursor rules/skills for AI/LLM context; PROJECT_ANALYSIS.md is canonical reference.

@@ -35,13 +35,13 @@ func NewDocumentHandler(db database.Service) *DocumentHandler {
 
 const docCols = `d.id, d.employee_id, d.document_type,
 	d.document_number, COALESCE(d.issue_date::text, ''), COALESCE(d.expiry_date::text, ''),
-	d.is_primary, COALESCE(d.metadata::text, '{}'),
+	COALESCE(d.metadata::text, '{}'),
 	d.file_url, d.file_name, d.file_size, d.file_type,
 	d.last_updated, d.created_at`
 
 const docRetCols = `id, employee_id, document_type,
 	document_number, COALESCE(issue_date::text, ''), COALESCE(expiry_date::text, ''),
-	is_primary, COALESCE(metadata::text, '{}'),
+	COALESCE(metadata::text, '{}'),
 	file_url, file_name, file_size, file_type,
 	last_updated, created_at`
 
@@ -55,7 +55,7 @@ func scanDocument(scanner interface {
 	err := scanner.Scan(
 		&doc.ID, &doc.EmployeeID, &doc.DocumentType,
 		&docNumber, &issueDateRaw, &expiryRaw,
-		&doc.IsPrimary, &metadataRaw,
+		&metadataRaw,
 		&doc.FileURL, &doc.FileName, &doc.FileSize, &doc.FileType,
 		&doc.LastUpdated, &doc.CreatedAt,
 	)
@@ -89,7 +89,7 @@ func scanDocumentWithRule(scanner interface {
 	err := scanner.Scan(
 		&doc.ID, &doc.EmployeeID, &doc.DocumentType,
 		&docNumber, &issueDateRaw, &expiryRaw,
-		&doc.IsPrimary, &metadataRaw,
+		&metadataRaw,
 		&doc.FileURL, &doc.FileName, &doc.FileSize, &doc.FileType,
 		&doc.LastUpdated, &doc.CreatedAt,
 		&rule.GracePeriodDays, &rule.FinePerDay, &rule.FineType, &rule.FineCap,
@@ -125,7 +125,7 @@ func scanDocumentWithRuleAndDisplayName(scanner interface {
 	err := scanner.Scan(
 		&doc.ID, &doc.EmployeeID, &doc.DocumentType,
 		&docNumber, &issueDateRaw, &expiryRaw,
-		&doc.IsPrimary, &metadataRaw,
+		&metadataRaw,
 		&doc.FileURL, &doc.FileName, &doc.FileSize, &doc.FileType,
 		&doc.LastUpdated, &doc.CreatedAt,
 		&rule.GracePeriodDays, &rule.FinePerDay, &rule.FineType, &rule.FineCap,
@@ -463,7 +463,7 @@ func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	err := row.Scan(
 		&doc.ID, &doc.EmployeeID, &doc.DocumentType,
 		&docNumber, &issueDateRaw, &expiryRaw,
-		&doc.IsPrimary, &metadataRaw,
+		&metadataRaw,
 		&doc.FileURL, &doc.FileName, &doc.FileSize, &doc.FileType,
 		&doc.LastUpdated, &doc.CreatedAt,
 		&rule.GracePeriodDays, &rule.FinePerDay, &rule.FineType, &rule.FineCap,
@@ -721,55 +721,6 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ── Toggle Primary ───────────────────────────────────────────────
-
-// TogglePrimary handles PATCH /api/documents/{id}/primary
-func (h *DocumentHandler) TogglePrimary(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		JSONError(w, http.StatusBadRequest, "Document ID is required")
-		return
-	}
-
-	if !checkDocumentAccess(r.Context(), h.db.GetPool(), id) {
-		JSONError(w, http.StatusForbidden, "Access denied to this document")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	pool := h.db.GetPool()
-
-	// Toggle is_primary on this document (no uniqueness constraint now)
-	var currentlyPrimary bool
-	err := pool.QueryRow(ctx, `SELECT is_primary FROM documents WHERE id = $1`, id).Scan(&currentlyPrimary)
-	if err != nil {
-		JSONError(w, http.StatusNotFound, "Document not found")
-		return
-	}
-
-	newPrimary := !currentlyPrimary
-	_, err = pool.Exec(ctx, `UPDATE documents SET is_primary = $1 WHERE id = $2`, newPrimary, id)
-	if err != nil {
-		log.Printf("Error toggling primary document %s: %v", id, err)
-		JSONError(w, http.StatusInternalServerError, "Failed to toggle primary")
-		return
-	}
-
-	// Audit trail
-	userID, _ := r.Context().Value(ctxkeys.UserID).(string)
-	action := "set_primary"
-	if currentlyPrimary {
-		action = "unset_primary"
-	}
-	logActivity(pool, userID, action, "document", id, nil)
-
-	JSON(w, http.StatusOK, map[string]string{
-		"message": "Primary document updated successfully",
-	})
-}
-
 // ── Delete ───────────────────────────────────────────────────────
 
 // Delete handles DELETE /api/documents/{id}
@@ -942,15 +893,15 @@ func (h *DocumentHandler) Renew(w http.ResponseWriter, r *http.Request) {
 	newRow := tx.QueryRow(ctx, fmt.Sprintf(`
 		INSERT INTO documents (
 			employee_id, document_type, document_number, issue_date, expiry_date,
-			is_primary, metadata,
+			metadata,
 			file_url, file_name, file_size, file_type
 		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		RETURNING %s
 	`, docRetCols),
 		oldDoc.EmployeeID, oldDoc.DocumentType,
 		docNumber, issueDate, req.ExpiryDate,
-		oldDoc.IsPrimary, string(metadata),
+		string(metadata),
 		fileURL, fileName, fileSize, fileType,
 	)
 
@@ -958,12 +909,6 @@ func (h *DocumentHandler) Renew(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error inserting renewed document: %v", err)
 		JSONError(w, http.StatusInternalServerError, "Failed to create renewed document")
 		return
-	}
-
-	// Archive the old document
-	_, err = tx.Exec(ctx, `UPDATE documents SET is_primary = FALSE WHERE id = $1`, oldID)
-	if err != nil {
-		log.Printf("Error archiving old document: %v", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

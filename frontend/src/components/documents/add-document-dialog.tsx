@@ -201,13 +201,12 @@ export function AddDocumentDialog({ employeeId, open, onOpenChange, onSuccess, p
                                         key={dt.docType}
                                         type="button"
                                         onClick={() => setDocumentType(dt.docType)}
-                                        className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                                            documentType === dt.docType
+                                        className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${documentType === dt.docType
                                                 ? 'bg-blue-600 text-white border-blue-600'
                                                 : 'bg-muted border-border text-muted-foreground hover:border-blue-400 dark:hover:border-blue-600'
-                                        }`}
+                                            }`}
                                     >
-                                        {dt.displayName}
+                                        {dt.displayName}{dt.isMandatory && <span className="text-red-400 ml-0.5 text-xs">*</span>}
                                     </button>
                                 ))}
                             </div>
@@ -218,11 +217,10 @@ export function AddDocumentDialog({ employeeId, open, onOpenChange, onSuccess, p
                     {documentType && relevantAlerts.length > 0 && (
                         <div className="space-y-2">
                             {relevantAlerts.map((alert, i) => (
-                                <div key={i} className={`flex items-start gap-2 p-3 rounded-lg text-sm ${
-                                    alert.severity === 'critical'
+                                <div key={i} className={`flex items-start gap-2 p-3 rounded-lg text-sm ${alert.severity === 'critical'
                                         ? 'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300'
                                         : 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300'
-                                }`}>
+                                    }`}>
                                     <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                                     <span>{alert.message}</span>
                                 </div>
@@ -413,13 +411,12 @@ export function EditDocumentDialog({ document, open, onOpenChange, onSuccess }: 
                                         key={dt.docType}
                                         type="button"
                                         onClick={() => setDocumentType(dt.docType)}
-                                        className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                                            documentType === dt.docType
+                                        className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${documentType === dt.docType
                                                 ? 'bg-blue-600 text-white border-blue-600'
                                                 : 'bg-muted border-border text-muted-foreground hover:border-blue-400 dark:hover:border-blue-600'
-                                        }`}
+                                            }`}
                                     >
-                                        {dt.displayName}
+                                        {dt.displayName}{dt.isMandatory && <span className="text-red-400 ml-0.5 text-xs">*</span>}
                                     </button>
                                 ))}
                             </div>

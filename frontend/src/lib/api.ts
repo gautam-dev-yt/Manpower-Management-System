@@ -250,10 +250,6 @@ export const api = {
                 method: 'POST',
                 body: JSON.stringify({ ids }),
             }),
-        togglePrimary: (id: string) =>
-            fetcher<{ message: string }>(`/api/documents/${id}/primary`, {
-                method: 'PATCH',
-            }),
         renew: (id: string, data: {
             documentNumber?: string;
             issueDate?: string;

@@ -186,10 +186,10 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	for _, docType := range mandatoryDocTypes {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO documents (
-				employee_id, document_type, is_primary,
+				employee_id, document_type,
 				file_url, file_name, file_size, file_type
 			)
-			VALUES ($1, $2, FALSE, '', '', 0, '')
+			VALUES ($1, $2, '', '', 0, '')
 		`, employee.ID, docType)
 		if err != nil {
 			log.Printf("Error creating mandatory doc slot %s for employee %s: %v",

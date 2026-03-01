@@ -9,21 +9,21 @@ import (
 
 // Document represents a document record in the database.
 type Document struct {
-	ID             string          `json:"id"`
-	EmployeeID     string          `json:"employeeId"`
-	DocumentType   string          `json:"documentType"`
-	DocumentNumber *string         `json:"documentNumber"` // e.g. visa UID, EID number
-	IssueDate      *string         `json:"issueDate"`      // when the document was issued
-	ExpiryDate     *string         `json:"expiryDate"`     // nullable — nil means no expiry set yet
-	IsPrimary      bool            `json:"isPrimary"`
-	IsMandatory    bool            `json:"isMandatory"` // computed from document_types table, not stored
-	Metadata       json.RawMessage `json:"metadata"`    // type-specific fields (JSONB)
-	FileURL        string          `json:"fileUrl"`
-	FileName       string          `json:"fileName"`
-	FileSize       int64           `json:"fileSize"`
-	FileType       string          `json:"fileType"`
-	LastUpdated    time.Time       `json:"lastUpdated"`
-	CreatedAt      time.Time       `json:"createdAt"`
+	ID             string  `json:"id"`
+	EmployeeID     string  `json:"employeeId"`
+	DocumentType   string  `json:"documentType"`
+	DocumentNumber *string `json:"documentNumber"` // e.g. visa UID, EID number
+	IssueDate      *string `json:"issueDate"`      // when the document was issued
+	ExpiryDate     *string `json:"expiryDate"`     // nullable — nil means no expiry set yet
+
+	IsMandatory bool            `json:"isMandatory"` // computed from document_types table, not stored
+	Metadata    json.RawMessage `json:"metadata"`    // type-specific fields (JSONB)
+	FileURL     string          `json:"fileUrl"`
+	FileName    string          `json:"fileName"`
+	FileSize    int64           `json:"fileSize"`
+	FileType    string          `json:"fileType"`
+	LastUpdated time.Time       `json:"lastUpdated"`
+	CreatedAt   time.Time       `json:"createdAt"`
 }
 
 // ── Document with Computed Compliance Fields ─────────────────────
@@ -68,16 +68,16 @@ type CreateDocumentRequest struct {
 
 // UpdateDocumentRequest holds the fields that can be partially updated.
 type UpdateDocumentRequest struct {
-	DocumentType   *string         `json:"documentType,omitempty"`
-	DocumentNumber *string         `json:"documentNumber,omitempty"`
-	IssueDate      *string         `json:"issueDate,omitempty"`
-	ExpiryDate     *string         `json:"expiryDate,omitempty"`
-	IsPrimary      *bool           `json:"isPrimary,omitempty"`
-	Metadata       json.RawMessage `json:"metadata,omitempty"`
-	FileURL        *string         `json:"fileUrl,omitempty"`
-	FileName       *string         `json:"fileName,omitempty"`
-	FileSize       *int64          `json:"fileSize,omitempty"`
-	FileType       *string         `json:"fileType,omitempty"`
+	DocumentType   *string `json:"documentType,omitempty"`
+	DocumentNumber *string `json:"documentNumber,omitempty"`
+	IssueDate      *string `json:"issueDate,omitempty"`
+	ExpiryDate     *string `json:"expiryDate,omitempty"`
+
+	Metadata json.RawMessage `json:"metadata,omitempty"`
+	FileURL  *string         `json:"fileUrl,omitempty"`
+	FileName *string         `json:"fileName,omitempty"`
+	FileSize *int64          `json:"fileSize,omitempty"`
+	FileType *string         `json:"fileType,omitempty"`
 }
 
 // Validate checks if the create request contains valid data.

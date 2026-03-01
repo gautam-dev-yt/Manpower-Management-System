@@ -179,7 +179,6 @@ func main() {
 			r.Route("/api/documents/{id}", func(r chi.Router) {
 				r.Put("/", documentHandler.Update)
 				r.Delete("/", documentHandler.Delete)
-				r.Patch("/primary", documentHandler.TogglePrimary)
 				r.Post("/renew", documentHandler.Renew)
 			})
 

@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
     ArrowLeft, Pencil, Trash2, Phone, Building2, Calendar,
-    Briefcase, FileText, Plus, Loader2, Star, RefreshCw,
+    Briefcase, FileText, Plus, Loader2, RefreshCw,
     DollarSign, MapPin, Globe, User, MoreHorizontal, AlertTriangle, ExternalLink, Download,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -337,11 +337,10 @@ export default function EmployeeDetailPage() {
                     {dependencyAlerts.map((alert, i) => (
                         <div
                             key={i}
-                            className={`flex items-start gap-2.5 p-3 rounded-lg border text-sm ${
-                                alert.severity === 'critical'
+                            className={`flex items-start gap-2.5 p-3 rounded-lg border text-sm ${alert.severity === 'critical'
                                     ? 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20 text-red-800 dark:text-red-300'
                                     : 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20 text-yellow-800 dark:text-yellow-300'
-                            }`}
+                                }`}
                         >
                             <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                             <span>{alert.message}</span>
@@ -456,7 +455,6 @@ export default function EmployeeDetailPage() {
                                 const statusCfg = getStatusConfig(doc.status);
                                 const docName = doc.displayName || docDisplayName(doc.documentType, doc.metadata);
                                 const hasExpiry = !!doc.expiryDate;
-                                const isPrimary = doc.isPrimary;
                                 const needsRenew = doc.status === 'expiring_soon' || doc.status === 'in_grace' || doc.status === 'penalty_active';
 
                                 return (
@@ -474,8 +472,7 @@ export default function EmployeeDetailPage() {
                                             )}
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    <h4 className="font-medium text-foreground text-sm">{docName}</h4>
-                                                    {isPrimary && <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 flex-shrink-0" />}
+                                                    <h4 className="font-medium text-foreground text-sm">{docName}{doc.isMandatory && <span className="text-red-400 text-[10px] ml-0.5">*</span>}</h4>
                                                     {doc.fileUrl && (
                                                         <a
                                                             href={doc.fileUrl.startsWith('http') ? doc.fileUrl : `${doc.fileUrl}`}
@@ -534,7 +531,7 @@ export default function EmployeeDetailPage() {
                                             <Badge variant="outline" className={`text-xs whitespace-nowrap ${pending
                                                 ? 'bg-muted text-muted-foreground border-border'
                                                 : statusCfg.badge
-                                            }`}>
+                                                }`}>
                                                 {pending ? 'Pending' : statusCfg.label}
                                             </Badge>
 
@@ -552,14 +549,7 @@ export default function EmployeeDetailPage() {
                                                         </Button>
                                                     )}
 
-                                                    <Button
-                                                        variant="ghost" size="icon"
-                                                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                                        onClick={() => setEditingDoc(doc)}
-                                                        title="Edit"
-                                                    >
-                                                        <Pencil className="h-3.5 w-3.5" />
-                                                    </Button>
+
 
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
@@ -568,6 +558,10 @@ export default function EmployeeDetailPage() {
                                                             </Button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem onClick={() => setEditingDoc(doc)}>
+                                                                <Pencil className="h-3.5 w-3.5 mr-2" />
+                                                                Edit
+                                                            </DropdownMenuItem>
                                                             {doc.fileUrl && (
                                                                 <DropdownMenuItem onClick={async () => {
                                                                     try {
@@ -578,20 +572,6 @@ export default function EmployeeDetailPage() {
                                                                 }}>
                                                                     <Download className="h-3.5 w-3.5 mr-2" />
                                                                     Download
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                            {hasExpiry && (
-                                                                <DropdownMenuItem onClick={async () => {
-                                                                    try {
-                                                                        await api.documents.togglePrimary(doc.id);
-                                                                        toast.success(isPrimary ? 'Unset as tracked' : 'Set as tracked document');
-                                                                        fetchEmployee();
-                                                                    } catch {
-                                                                        toast.error('Failed to toggle');
-                                                                    }
-                                                                }}>
-                                                                    <Star className="h-3.5 w-3.5 mr-2" />
-                                                                    {isPrimary ? 'Unset as tracked' : 'Set as tracked'}
                                                                 </DropdownMenuItem>
                                                             )}
                                                             {hasExpiry && !needsRenew && (
