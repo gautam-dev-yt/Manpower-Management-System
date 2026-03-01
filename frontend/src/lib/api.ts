@@ -155,7 +155,7 @@ export const api = {
     companies: {
         list: () => fetcher<{ data: Company[] }>('/api/companies'),
         getById: (id: string) =>
-            fetcher<{ data: { company: Company; employees: { id: string; name: string; trade: string; status: string; photoUrl?: string | null; nationality?: string | null }[] } }>(`/api/companies/${id}`),
+            fetcher<{ data: { company: Company; employees: { id: string; name: string; trade: string; status: string; photoUrl?: string | null; nationality?: string | null; complianceStatus: string; urgentDocType?: string | null }[] } }>(`/api/companies/${id}`),
         create: (data: CreateCompanyRequest) =>
             fetcher<{ data: Company; message: string }>('/api/companies', {
                 method: 'POST',
